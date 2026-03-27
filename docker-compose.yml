@@ -1,0 +1,18 @@
+services:
+  gamelibrarian:
+    build: .
+    container_name: gamelibrarian
+    ports:
+      - "5000:5000"
+    volumes:
+      - gamelibrarian_data:/data
+    environment:
+      - DATA_DIR=/data
+      # Optional: IGDB integration (get credentials at https://dev.twitch.tv)
+      - IGDB_CLIENT_ID=${IGDB_CLIENT_ID:-}
+      - IGDB_CLIENT_SECRET=${IGDB_CLIENT_SECRET:-}
+    restart: unless-stopped
+
+volumes:
+  gamelibrarian_data:
+    driver: local

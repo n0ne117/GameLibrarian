@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GameLibrarian</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+
+<!-- ═══════════════════════════ HEADER ════════════════════════════════════ -->
+<header class="header">
+  <div class="header-brand">
+    <svg class="header-logo" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="2" y="8" width="28" height="18" rx="4" fill="currentColor" opacity="0.15"/>
+      <rect x="2" y="8" width="28" height="18" rx="4" stroke="currentColor" stroke-width="2"/>
+      <circle cx="10" cy="17" r="2" fill="currentColor"/>
+      <circle cx="16" cy="17" r="2" fill="currentColor"/>
+      <circle cx="22" cy="17" r="2" fill="currentColor"/>
+      <rect x="13" y="3" width="6" height="7" rx="1.5" fill="currentColor" opacity="0.6"/>
+    </svg>
+    <span class="header-title">GameLibrarian</span>
+  </div>
+
+  <nav class="header-nav">
+    <button class="nav-btn active" data-page="library">Library</button>
+    <button class="nav-btn" data-page="stats">Statistics</button>
+  </nav>
+
+  <div class="header-actions">
+    <div class="view-toggle" id="viewToggle">
+      <button class="view-btn active" data-view="grid" title="Grid view">
+        <svg viewBox="0 0 20 20" fill="currentColor"><path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM11 5a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zM11 13a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
+      </button>
+      <button class="view-btn" data-view="list" title="List view">
+        <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 15a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd"/></svg>
+      </button>
+    </div>
+    <button class="btn-primary" id="addGameBtn">
+      <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16"><path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd"/></svg>
+      Add Game
+    </button>
+  </div>
+</header>
+
+<!-- ═══════════════════════════ MAIN ══════════════════════════════════════ -->
+<main>
+
+  <!-- ─── LIBRARY PAGE ──────────────────────────────────────────────────── -->
+  <section id="libraryPage" class="page active">
+
+    <div class="filters-bar">
+      <div class="search-wrap">
+        <svg class="search-icon" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd"/></svg>
+        <input type="search" id="searchInput" placeholder="Search games…" autocomplete="off" />
+        <button class="search-clear-btn hidden" id="searchClearBtn" title="Clear search" aria-label="Clear search">&#x2715;</button>
+      </div>
+
+      <div id="filterPlatformWrap" class="filter-dropdown"></div>
+      <div id="filterStatusWrap"   class="filter-dropdown"></div>
+      <div id="filterRatingWrap"   class="filter-dropdown"></div>
+
+      <label class="hide-completed-label">
+        <input type="checkbox" id="hideCompleted" />
+        Hide completed
+      </label>
+
+      <div class="sort-wrap">
+        <select id="sortField" class="filter-select">
+          <option value="name">Sort: Name</option>
+          <option value="rating">Sort: Rating</option>
+          <option value="status">Sort: Status</option>
+          <option value="release_date">Sort: Release</option>
+          <option value="created_at">Sort: Date Added</option>
+        </select>
+        <button class="sort-dir-btn" id="sortDirBtn" title="Toggle sort direction">
+          <svg id="sortDirIcon" viewBox="0 0 20 20" fill="currentColor" width="16" height="16">
+            <path d="M3 3a1 1 0 000 2h11a1 1 0 100-2H3zM3 7a1 1 0 000 2h7a1 1 0 100-2H3zM3 11a1 1 0 100 2h4a1 1 0 100-2H3z"/>
+          </svg>
+        </button>
+        <button class="btn-clear-filters hidden" id="clearFiltersBtn">&#x2715; Clear filters</button>
+      </div>
+    </div>
+
+    <div class="game-count-bar">
+      <span id="gameCount">Loading…</span>
+    </div>
+
+    <div id="gridView"  class="game-grid"></div>
+    <div id="listView"  class="game-list hidden">
+      <table class="list-table">
+        <thead>
+          <tr>
+            <th style="width:60px"></th>
+            <th class="sortable" data-sort="name">Title</th>
+            <th>Platforms</th>
+            <th class="sortable" data-sort="status">Status</th>
+            <th class="sortable" data-sort="rating">Rating</th>
+            <th>Comment</th>
+            <th style="width:90px"></th>
+          </tr>
+        </thead>
+        <tbody id="listBody"></tbody>
+      </table>
+    </div>
+
+    <div id="emptyState" class="empty-state hidden">
+      <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="8" y="16" width="48" height="34" rx="6" stroke="currentColor" stroke-width="2.5"/>
+        <circle cx="20" cy="33" r="4" stroke="currentColor" stroke-width="2.5"/>
+        <circle cx="44" cy="33" r="4" stroke="currentColor" stroke-width="2.5"/>
+        <path d="M28 28h8" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+        <path d="M28 38h8" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+        <path d="M24 8h16" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+      </svg>
+      <h3 id="emptyTitle">No games found</h3>
+      <p id="emptySubtitle">Add your first game to get started.</p>
+    </div>
+  </section>
+
+  <!-- ─── STATS PAGE ────────────────────────────────────────────────────── -->
+  <section id="statsPage" class="page hidden">
+    <div class="stats-container" id="statsContainer">
+      <div class="loading-spinner"><div class="spinner"></div></div>
+    </div>
+  </section>
+
+</main>
+
+<!-- ═══════════════════════════ GAME MODAL ════════════════════════════════ -->
+<div id="gameModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="modalTitle">Add Game</h2>
+      <button class="modal-close" id="modalCloseBtn" aria-label="Close">&times;</button>
+    </div>
+
+    <!-- IGDB search bar -->
+    <div class="igdb-search-wrap" id="igdbSearchWrap">
+      <div class="igdb-search-row">
+        <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16"><path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd"/></svg>
+        <input type="text" id="igdbSearchInput" placeholder="Search IGDB to auto-fill game data…" autocomplete="off" />
+        <span class="igdb-badge">IGDB</span>
+      </div>
+      <div id="igdbResults" class="igdb-results hidden"></div>
+    </div>
+    <div class="igdb-disabled-note hidden" id="igdbDisabledNote">
+      IGDB not configured — fill in game details manually.
+      <a href="https://dev.twitch.tv/console" target="_blank" rel="noopener">Set up IGDB →</a>
+    </div>
+
+    <div class="modal-body">
+      <div class="modal-inner">
+
+        <!-- Cover preview + URL -->
+        <div class="cover-column">
+          <div class="cover-preview" id="coverPreview">
+            <svg viewBox="0 0 48 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect x="2" y="2" width="44" height="60" rx="4" stroke="currentColor" stroke-width="2" opacity="0.3"/>
+              <circle cx="24" cy="28" r="8" stroke="currentColor" stroke-width="2" opacity="0.3"/>
+              <path d="M10 46c0-7.732 6.268-14 14-14s14 6.268 14 14" stroke="currentColor" stroke-width="2" opacity="0.3"/>
+            </svg>
+            <span>No Cover</span>
+          </div>
+          <input type="hidden" id="formCoverUrl" />
+          <input type="hidden" id="formIgdbId" />
+          <button type="button" class="btn-ghost cover-url-btn" id="coverUrlBtn">Set cover URL</button>
+          <input type="url" id="coverUrlInput" class="form-input hidden" placeholder="https://…" />
+        </div>
+
+        <!-- Form fields -->
+        <div class="form-column">
+          <div class="form-grid">
+
+            <div class="form-group span-2">
+              <label class="form-label" for="formName">Game Title <span class="required">*</span></label>
+              <input type="text" id="formName" class="form-input" placeholder="e.g. The Witcher 3" required />
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="formReleaseDate">Release Date</label>
+              <input type="date" id="formReleaseDate" class="form-input" />
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="formDeveloper">Developer</label>
+              <input type="text" id="formDeveloper" class="form-input" placeholder="e.g. CD Projekt Red" />
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="formPublisher">Publisher</label>
+              <input type="text" id="formPublisher" class="form-input" placeholder="e.g. CD Projekt" />
+            </div>
+
+            <div class="form-group span-2">
+              <label class="form-label" for="formSummary">Summary</label>
+              <textarea id="formSummary" class="form-input form-textarea" rows="3" placeholder="Short description…"></textarea>
+            </div>
+
+            <!-- Platforms -->
+            <div class="form-group span-2">
+              <label class="form-label">Platforms</label>
+              <div class="platform-grid">
+                <label class="platform-check"><input type="checkbox" name="platform" value="steam" /><span class="plat-pill steam">Steam</span></label>
+                <label class="platform-check"><input type="checkbox" name="platform" value="epic" /><span class="plat-pill epic">Epic Games</span></label>
+                <label class="platform-check"><input type="checkbox" name="platform" value="ea_origin" /><span class="plat-pill ea">EA Origin</span></label>
+                <label class="platform-check"><input type="checkbox" name="platform" value="nintendo" /><span class="plat-pill nintendo">Nintendo</span></label>
+                <label class="platform-check"><input type="checkbox" name="platform" value="sega" /><span class="plat-pill sega">Sega</span></label>
+                <label class="platform-check"><input type="checkbox" name="platform" value="xbox" /><span class="plat-pill xbox">Xbox</span></label>
+                <label class="platform-check"><input type="checkbox" name="platform" value="playstation" /><span class="plat-pill playstation">PlayStation</span></label>
+                <label class="platform-check"><input type="checkbox" name="platform" value="gog" /><span class="plat-pill gog">GoG</span></label>
+                <label class="platform-check"><input type="checkbox" name="platform" value="blizzard" /><span class="plat-pill blizzard">Blizzard</span></label>
+                <label class="platform-check"><input type="checkbox" name="platform" value="microsoft" /><span class="plat-pill microsoft">Microsoft</span></label>
+              </div>
+            </div>
+
+            <!-- Status + Rating -->
+            <div class="form-group">
+              <label class="form-label" for="formStatus">Status</label>
+              <select id="formStatus" class="form-input form-select">
+                <option value="unplayed">Unplayed</option>
+                <option value="unfinished">Unfinished</option>
+                <option value="completed">Completed</option>
+                <option value="completed_100">100% Completed</option>
+                <option value="abandoned">Abandoned</option>
+                <option value="multiplayer_only">Multiplayer Only</option>
+                <option value="cant_complete">Can't Be Completed</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Rating</label>
+              <div class="star-picker" id="starPicker">
+                <button type="button" class="star-btn" data-value="1">★</button>
+                <button type="button" class="star-btn" data-value="2">★</button>
+                <button type="button" class="star-btn" data-value="3">★</button>
+                <button type="button" class="star-btn" data-value="4">★</button>
+                <button type="button" class="star-btn" data-value="5">★</button>
+              </div>
+              <input type="hidden" id="formRating" value="0" />
+            </div>
+
+            <div class="form-group span-2">
+              <label class="form-label" for="formComment">
+                Comment <span class="char-count" id="charCount">0 / 400</span>
+              </label>
+              <textarea id="formComment" class="form-input form-textarea" rows="2" maxlength="400" placeholder="Personal notes…"></textarea>
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <div class="modal-footer-left">
+        <button type="button" class="btn-danger hidden" id="deleteGameBtn">Delete Game</button>
+      </div>
+      <div class="modal-footer-right">
+        <button type="button" class="btn-ghost" id="cancelModalBtn">Cancel</button>
+        <button type="button" class="btn-primary" id="saveGameBtn">Save Game</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════ CONFIRM DELETE ════════════════════════════ -->
+<div id="confirmModal" class="modal-overlay hidden" role="dialog" aria-modal="true">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <h2>Delete Game?</h2>
+    </div>
+    <div class="modal-body">
+      <p id="confirmText">Are you sure you want to remove <strong id="confirmGameName"></strong> from your library? This cannot be undone.</p>
+    </div>
+    <div class="modal-footer">
+      <div class="modal-footer-left"></div>
+      <div class="modal-footer-right">
+        <button class="btn-ghost" id="confirmCancelBtn">Cancel</button>
+        <button class="btn-danger" id="confirmDeleteBtn">Delete</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════ TOAST ════════════════════════════════════ -->
+<div id="toastContainer" class="toast-container"></div>
+
+<script src="/js/app.js"></script>
+</body>
+</html>
