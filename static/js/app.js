@@ -46,6 +46,8 @@ const state = {
   filterStatuses:  new Set(),
   filterRatings:   new Set(),
   hideCompleted:   false,
+  wishlistData:        null,   // last /api/wishlist response, re-filtered by the search box
+  wishlistOwnedHidden: false,
 };
 
 // ── API helpers ───────────────────────────────────────────────────────────────
@@ -176,6 +178,21 @@ async function init() {
   document.getElementById('igdbTestBtn')       .addEventListener('click', () => checkIgdbStatus(true));
   document.getElementById('syncSteamBtn')      .addEventListener('click', syncSteamData);
   document.getElementById('wishlistRefreshBtn').addEventListener('click', () => loadWishlist(true));
+
+  // Wishlist search (client-side, filters the loaded wishlist by name)
+  const wlSearch      = document.getElementById('wishlistSearchInput');
+  const wlSearchClear = document.getElementById('wishlistSearchClearBtn');
+  const debouncedWl   = debounce(() => { if (state.wishlistData) renderWishlist(state.wishlistData); }, 150);
+  wlSearch.addEventListener('input', () => {
+    wlSearchClear.classList.toggle('hidden', wlSearch.value === '');
+    debouncedWl();
+  });
+  wlSearchClear.addEventListener('click', () => {
+    wlSearch.value = '';
+    wlSearchClear.classList.add('hidden');
+    wlSearch.focus();
+    if (state.wishlistData) renderWishlist(state.wishlistData);
+  });
 
   // Star picker
   initStarPicker();
@@ -678,6 +695,7 @@ async function loadWishlist(force = false) {
   document.getElementById('wishlistRefreshTs').textContent = '';
   try {
     const data = await GET('/api/wishlist' + (force ? '?refresh=1' : ''));
+    state.wishlistData = data;
     renderWishlist(data);
   } catch (e) {
     document.getElementById('wishlistContainer').innerHTML =
@@ -711,12 +729,19 @@ function renderWishlist(data) {
       'Last refreshed: ' + ts + (data.cached ? ' (cached)' : '');
   }
 
-  const games  = data.games || [];
+  const allGames = data.games || [];
+  if (allGames.length === 0) {
+    container.innerHTML = `<div class="wishlist-empty">Your Steam wishlist appears to be empty or private.</div>`;
+    return;
+  }
+
+  const query  = foldText(document.getElementById('wishlistSearchInput').value.trim());
+  const games  = query ? allGames.filter(g => foldText(g.name).includes(query)) : allGames;
   const owned  = games.filter(g => g.library_match);
   const wanted = games.filter(g => !g.library_match);
 
   if (games.length === 0) {
-    container.innerHTML = `<div class="wishlist-empty">Your Steam wishlist appears to be empty or private.</div>`;
+    container.innerHTML = `<div class="wishlist-empty">No wishlist games match your search.</div>`;
     return;
   }
 
@@ -726,9 +751,9 @@ function renderWishlist(data) {
     html += `
       <div class="wishlist-section-header">
         <span class="wishlist-section-title">Already Own <span style="opacity:.6">(${owned.length})</span></span>
-        <button class="wishlist-toggle-btn" id="ownedToggleBtn">Hide ▲</button>
+        <button class="wishlist-toggle-btn" id="ownedToggleBtn">${state.wishlistOwnedHidden ? 'Show ▼' : 'Hide ▲'}</button>
       </div>
-      <div id="ownedGrid" class="wishlist-grid">
+      <div id="ownedGrid" class="wishlist-grid${state.wishlistOwnedHidden ? ' hidden' : ''}">
         ${owned.map(g => wishlistCardHtml(g, true, -1)).join('')}
       </div>`;
   }
@@ -755,6 +780,7 @@ function renderWishlist(data) {
   if (toggleBtn) {
     toggleBtn.addEventListener('click', () => {
       const hidden = ownedGrid.classList.toggle('hidden');
+      state.wishlistOwnedHidden = hidden;
       toggleBtn.textContent = hidden ? 'Show ▼' : 'Hide ▲';
     });
   }
@@ -1345,6 +1371,11 @@ function escHtml(str) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+// Lowercase and strip accents, so "pokemon" finds "Pokémon"
+function foldText(str) {
+  return String(str || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 }
 
 function show(id) { document.getElementById(id).classList.remove('hidden'); }

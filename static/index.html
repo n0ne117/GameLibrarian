@@ -136,11 +136,18 @@
   <!-- ─── WISHLIST PAGE ─────────────────────────────────────────────────── -->
   <section id="wishlistPage" class="page hidden">
     <div class="wishlist-toolbar">
-      <span id="wishlistRefreshTs" class="wishlist-refresh-ts"></span>
-      <button class="btn-ghost" id="wishlistRefreshBtn">
-        <svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14"><path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd"/></svg>
-        Refresh
-      </button>
+      <div class="search-wrap">
+        <svg class="search-icon" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd"/></svg>
+        <input type="search" id="wishlistSearchInput" placeholder="Search wishlist…" autocomplete="off" />
+        <button class="search-clear-btn hidden" id="wishlistSearchClearBtn" title="Clear search" aria-label="Clear search">&#x2715;</button>
+      </div>
+      <div class="wishlist-toolbar-right">
+        <span id="wishlistRefreshTs" class="wishlist-refresh-ts"></span>
+        <button class="btn-ghost" id="wishlistRefreshBtn">
+          <svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14"><path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd"/></svg>
+          Refresh
+        </button>
+      </div>
     </div>
     <div id="wishlistContainer">
       <div class="loading-spinner"><div class="spinner"></div></div>

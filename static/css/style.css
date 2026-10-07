@@ -277,6 +277,8 @@ main { padding: 0; }
 }
 .search-wrap input:focus { border-color: var(--border-focus); }
 .search-wrap input::placeholder { color: var(--text-muted); }
+/* Hide the browser's own clear button — we render .search-clear-btn instead */
+.search-wrap input::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; }
 .search-clear-btn {
   position: absolute;
   right: 8px;
@@ -1293,6 +1295,12 @@ main { padding: 0; }
   padding: 12px 28px;
   background: var(--bg-surface);
   border-bottom: 1px solid var(--border);
+}
+
+.wishlist-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 14px;
 }
 
 .wishlist-refresh-ts {
