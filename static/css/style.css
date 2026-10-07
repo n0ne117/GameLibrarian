@@ -1421,6 +1421,33 @@ main { padding: 0; }
   padding: 2px 6px;
 }
 
+/* Bought / removed-from-wishlist section */
+.wishlist-section-hint {
+  padding: 0 28px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+.wishlist-card.removed { border-color: var(--accent-dim); }
+.wishlist-card-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: auto;
+}
+.wishlist-card-actions .btn-add-wishlist { margin-top: 0; }
+.btn-dismiss-removed {
+  flex: none;
+  padding: 6px 10px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition: color var(--transition), border-color var(--transition);
+}
+.btn-dismiss-removed:hover { color: var(--text-primary); border-color: var(--text-muted); }
+
 /* Add to Library button on wishlist cards */
 .btn-add-wishlist {
   display: flex;

@@ -215,6 +215,21 @@
         <button class="btn-primary" id="saveSettingsBtn">Save Settings</button>
       </div>
 
+      <div class="settings-card">
+        <h2 class="settings-heading">Backup &amp; Restore</h2>
+        <p class="settings-hint">
+          A backup is a single .zip with everything: your library, cover images, wishlist history and
+          all settings — <strong>including your Steam API key and IGDB secret in plain text</strong>.
+          Keep it somewhere safe. Restoring replaces everything currently in GameLibrarian.
+        </p>
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <button class="btn-ghost" id="downloadBackupBtn" type="button">Download Backup</button>
+          <button class="btn-ghost" id="restoreBackupBtn" type="button">Restore from Backup…</button>
+          <input type="file" id="restoreBackupInput" accept=".zip,application/zip" hidden />
+          <span id="backupStatus" class="settings-hint"></span>
+        </div>
+      </div>
+
     </div>
   </section>
 

@@ -14,7 +14,7 @@ A self-hosted, dockerized web application for organizing your PC and console gam
 - **5-Star Rating** — Rate your games (abandoned games are automatically set to 0 stars)
 - **Platform Support** — Steam, Epic Games, EA Origin, GoG, Blizzard, Microsoft, Nintendo, Sega, Xbox, PlayStation — multiple platforms per game
 - **Steam Integration** — Play time and achievement progress synced from your Steam account, with a Steam Store link on every Steam game (see [Steam Integration](#steam-integration))
-- **Steam Wishlist** — Browse your Steam wishlist, see which games you already own, and add the rest to your library in one click (see [Wishlist](#wishlist))
+- **Steam Wishlist** — Browse your Steam wishlist, see which games you already own, and add the rest to your library in one click. Games that leave your wishlist (because you bought them) are kept in a separate section so you can still add them (see [Wishlist](#wishlist))
 - **Hours Played** — Tracked per game; filled automatically for Steam games, editable by hand for every platform
 - **Comments** — Add personal notes up to 400 characters per game
 - **Box Art Storage** — Cover images are downloaded and stored locally; they survive container restarts and rebuilds
@@ -23,6 +23,7 @@ A self-hosted, dockerized web application for organizing your PC and console gam
 - **Sorting** — Sort by name, rating, status, release date, or date added (ascending/descending)
 - **Statistics Dashboard** — Overview of your collection: totals, total hours played, completion breakdown, rating distribution, platform breakdown
 - **Settings Page** — Enter Steam and IGDB credentials in the browser instead of editing config files
+- **Backup & Restore** — Download everything as one .zip and restore it later (see [Backup & Restore](#backup--restore))
 - **Persistent Storage** — All data (SQLite database + images) lives in `./data` and survives restarts/rebuilds
 - **Single-user** — No login or user management required
 
@@ -110,6 +111,8 @@ Play time, achievements, and the store link are matched to your library by Steam
 
 The **Wishlist** tab shows your Steam wishlist in your wishlist priority order:
 
+- **Bought / Removed from Wishlist** — games that have left your Steam wishlist since the last refresh, usually because you bought them. **+ Add to Library** opens the Add Game dialog with the Steam platform and App ID already filled in. Once a game is in your library it disappears from this section; **✕** dismisses games you removed without buying
+
 - Names, cover art, and release dates come from IGDB (Steam App ID → IGDB game). Without IGDB credentials, games show the Steam header image and `Steam App <id>` as the name
 - **Already Own** — wishlist games that are already in your library, matched by IGDB ID or by name. Click one to open it in the library
 - **Want to Play** — everything else. **+ Add to Library** opens the Add Game dialog pre-filled from IGDB
@@ -117,6 +120,19 @@ The **Wishlist** tab shows your Steam wishlist in your wishlist priority order:
 - The wishlist is cached for 24 hours. **Refresh** fetches it from Steam again immediately
 
 The wishlist needs a Steam Web API key and a public profile — see [Steam Integration](#steam-integration).
+
+---
+
+## Backup & Restore
+
+**Settings → Backup & Restore**
+
+- **Download Backup** saves a `.zip` with everything: the database (library, settings, wishlist history) and all cover images. Credentials set only through `.env` / environment variables are written into the backup too
+- **Restore from Backup…** replaces *everything* in GameLibrarian with the contents of a backup file. This can't be undone, so download a backup of the current state first if you might need it
+
+> ⚠️ A backup contains your **Steam API key and IGDB Client Secret in plain text**. Store it somewhere safe.
+
+If a restore fails with "too large" behind a reverse proxy, raise the proxy's upload limit (e.g. `client_max_body_size` in nginx). The app itself accepts uploads up to 512 MB.
 
 ---
 

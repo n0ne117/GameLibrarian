@@ -178,6 +178,12 @@ async function init() {
   document.getElementById('igdbTestBtn')       .addEventListener('click', () => checkIgdbStatus(true));
   document.getElementById('syncSteamBtn')      .addEventListener('click', syncSteamData);
   document.getElementById('wishlistRefreshBtn').addEventListener('click', () => loadWishlist(true));
+  document.getElementById('downloadBackupBtn') .addEventListener('click', () => { window.location.href = '/api/backup'; });
+  document.getElementById('restoreBackupBtn')  .addEventListener('click', () => document.getElementById('restoreBackupInput').click());
+  document.getElementById('restoreBackupInput').addEventListener('change', e => {
+    restoreBackup(e.target.files[0]);
+    e.target.value = '';   // allow picking the same file again
+  });
 
   // Wishlist search (client-side, filters the loaded wishlist by name)
   const wlSearch      = document.getElementById('wishlistSearchInput');
@@ -663,6 +669,38 @@ async function saveSettings() {
   }
 }
 
+async function restoreBackup(file) {
+  if (!file) return;
+  const ok = confirm(
+    `Restore from "${file.name}"?\n\n` +
+    'This replaces your entire library, cover images, wishlist history and settings ' +
+    'with the contents of the backup. It cannot be undone — download a backup first ' +
+    'if you might need the current state.'
+  );
+  if (!ok) return;
+
+  const status = document.getElementById('backupStatus');
+  const btn    = document.getElementById('restoreBackupBtn');
+  btn.disabled = true;
+  status.textContent = 'Restoring…';
+  try {
+    const form = new FormData();
+    form.append('file', file);
+    const res  = await fetch('/api/backup', { method: 'POST', body: form });
+    const body = await res.json().catch(() => ({
+      error: res.status === 413 ? 'Backup file is too large for the server' : res.statusText,
+    }));
+    if (!res.ok) throw new Error(body.error || res.statusText);
+    status.textContent = `Restored ${body.games} games and ${body.images} images. Reloading…`;
+    showToast('Backup restored.', 'success');
+    setTimeout(() => location.reload(), 1500);
+  } catch (e) {
+    status.textContent = '';
+    showToast('Restore failed: ' + e.message, 'error');
+    btn.disabled = false;
+  }
+}
+
 async function checkIgdbStatus(explicit = false) {
   const badge  = document.getElementById('igdbStatusBadge');
   const result = document.getElementById('igdbTestResult');
@@ -729,23 +767,38 @@ function renderWishlist(data) {
       'Last refreshed: ' + ts + (data.cached ? ' (cached)' : '');
   }
 
-  const allGames = data.games || [];
-  if (allGames.length === 0) {
+  const allGames   = data.games   || [];
+  const allRemoved = data.removed || [];
+  if (allGames.length === 0 && allRemoved.length === 0) {
     container.innerHTML = `<div class="wishlist-empty">Your Steam wishlist appears to be empty or private.</div>`;
     return;
   }
 
-  const query  = foldText(document.getElementById('wishlistSearchInput').value.trim());
-  const games  = query ? allGames.filter(g => foldText(g.name).includes(query)) : allGames;
-  const owned  = games.filter(g => g.library_match);
-  const wanted = games.filter(g => !g.library_match);
+  const query   = foldText(document.getElementById('wishlistSearchInput').value.trim());
+  const matches = g => !query || foldText(g.name).includes(query);
+  const games   = allGames.filter(matches);
+  const removed = allRemoved.filter(matches);
+  const owned   = games.filter(g => g.library_match);
+  const wanted  = games.filter(g => !g.library_match);
 
-  if (games.length === 0) {
+  if (games.length === 0 && removed.length === 0) {
     container.innerHTML = `<div class="wishlist-empty">No wishlist games match your search.</div>`;
     return;
   }
 
   let html = '';
+
+  if (removed.length > 0) {
+    html += `
+      <div class="wishlist-section-header">
+        <span class="wishlist-section-title">Bought / Removed from Wishlist <span style="opacity:.6">(${removed.length})</span></span>
+      </div>
+      <p class="wishlist-section-hint">Games that left your Steam wishlist. Add the ones you bought; dismiss the rest with ✕.</p>
+      <div class="wishlist-grid">
+        ${removed.map((g, i) => wishlistCardHtml(g, false, i, true)).join('')}
+      </div>`;
+    if (games.length > 0) html += `<div class="library-divider" style="margin: 0 28px"></div>`;
+  }
 
   if (owned.length > 0) {
     html += `
@@ -790,8 +843,22 @@ function renderWishlist(data) {
     card.addEventListener('click', () => openEditModal(Number(card.dataset.libId)));
   });
 
+  // Bought / removed section
+  container.querySelectorAll('.btn-add-removed').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      addFromWishlist(removed[Number(btn.dataset.idx)], { boughtOnSteam: true });
+    });
+  });
+  container.querySelectorAll('.btn-dismiss-removed').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      dismissRemovedGame(removed[Number(btn.dataset.idx)]);
+    });
+  });
+
   // Add to Library buttons
-  container.querySelectorAll('.btn-add-wishlist').forEach(btn => {
+  container.querySelectorAll('.btn-add-wishlist:not(.btn-add-removed)').forEach(btn => {
     btn.addEventListener('click', e => {
       e.stopPropagation();
       addFromWishlist(wanted[Number(btn.dataset.idx)]);
@@ -799,7 +866,7 @@ function renderWishlist(data) {
   });
 }
 
-function wishlistCardHtml(game, isOwned, idx) {
+function wishlistCardHtml(game, isOwned, idx, isRemoved = false) {
   const match = game.library_match;
 
   const coverHtml = game.capsule
@@ -817,18 +884,26 @@ function wishlistCardHtml(game, isOwned, idx) {
           ${STATUSES[match.status]?.label || escHtml(match.status)}
         </span>
       </div>`;
+  } else if (isRemoved) {
+    footer = `
+      <div class="wishlist-card-actions">
+        <button class="btn-add-wishlist btn-add-removed" data-idx="${idx}">+ Add to Library</button>
+        <button class="btn-dismiss-removed" data-idx="${idx}" title="Dismiss — I didn't buy this">✕</button>
+      </div>`;
   } else {
     footer = `<button class="btn-add-wishlist" data-idx="${idx}">+ Add to Library</button>`;
   }
 
   return `
-    <div class="wishlist-card${isOwned ? ' owned' : ''}"
+    <div class="wishlist-card${isOwned ? ' owned' : ''}${isRemoved ? ' removed' : ''}"
          ${isOwned && match ? `data-lib-id="${match.id}"` : ''}>
       ${coverHtml}
       <div class="wishlist-card-info">
         <div class="wishlist-card-title">${escHtml(game.name)}</div>
         <div class="wishlist-card-meta">
-          ${game.price        ? `<span class="wishlist-price">${escHtml(game.price)}</span>` : '<span></span>'}
+          ${isRemoved && game.removed_at
+            ? `<span title="Left your Steam wishlist">Removed ${new Date(game.removed_at + 'Z').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>`
+            : game.price ? `<span class="wishlist-price">${escHtml(game.price)}</span>` : '<span></span>'}
           ${game.release_date ? `<span>${escHtml(game.release_date)}</span>`                 : ''}
         </div>
         ${footer}
@@ -836,9 +911,25 @@ function wishlistCardHtml(game, isOwned, idx) {
     </div>`;
 }
 
-async function addFromWishlist(game) {
+async function dismissRemovedGame(game) {
+  try {
+    await DELETE(`/api/wishlist/removed/${encodeURIComponent(game.appid)}`);
+    state.wishlistData.removed = (state.wishlistData.removed || []).filter(g => g.appid !== game.appid);
+    renderWishlist(state.wishlistData);
+  } catch (e) {
+    showToast('Dismiss failed: ' + e.message, 'error');
+  }
+}
+
+async function addFromWishlist(game, { boughtOnSteam = false } = {}) {
   openAddModal();
   document.getElementById('formName').value = game.name || '';
+
+  if (boughtOnSteam) {
+    document.querySelector('input[name="platform"][value="steam"]').checked = true;
+    document.getElementById('steamAppIdWrap').style.display = '';
+    document.getElementById('formSteamAppId').value = game.appid || '';
+  }
 
   if (game.igdb_id && state.igdbConfigured) {
     try {
@@ -1070,6 +1161,7 @@ async function saveGame() {
     if (saved.cover_error) showToast(saved.cover_error + ' — try another URL.', 'warn');
     closeModal();
     await loadGames();
+    if (state.page === 'wishlist') loadWishlist();
   } catch (e) {
     showToast('Save failed: ' + e.message, 'error');
   } finally {

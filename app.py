@@ -4,22 +4,26 @@ GameLibrarian — A personal game library manager.
 Flask/SQLite backend.  Written by Claude (Anthropic).
 """
 
+import io
 import ipaddress
 import json
 import os
 import re
+import shutil
 import socket
 import sqlite3
+import tempfile
 import threading
 import time
 import unicodedata
+import zipfile
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
 import requests
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, request, send_file, send_from_directory
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
@@ -53,10 +57,16 @@ IMAGE_TYPES = {
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
 MAX_REDIRECTS   = 3
 
+# Backup restore: only flat image files with these extensions are extracted.
+BACKUP_IMAGE_EXTS   = set(IMAGE_TYPES.values()) | {"jpeg"}
+SAFE_FILENAME       = re.compile(r"^[A-Za-z0-9_.-]+$")
+MAX_BACKUP_UNPACKED = 2 * 1024 * 1024 * 1024
+
 Path(DATA_DIR).mkdir(parents=True, exist_ok=True)
 Path(IMAGES_DIR).mkdir(parents=True, exist_ok=True)
 
 app = Flask(__name__, static_folder="static", static_url_path="")
+app.config["MAX_CONTENT_LENGTH"] = 512 * 1024 * 1024  # backup uploads
 
 # ── IGDB token cache ──────────────────────────────────────────────────────────
 
@@ -224,6 +234,12 @@ def _init_db() -> None:
                 id         INTEGER PRIMARY KEY CHECK (id = 1),
                 data       TEXT    NOT NULL DEFAULT '[]',
                 fetched_at TEXT
+            );
+            -- Games that dropped off the Steam wishlist (usually: bought)
+            CREATE TABLE IF NOT EXISTS wishlist_removed (
+                appid      TEXT PRIMARY KEY,
+                data       TEXT NOT NULL,
+                removed_at TEXT NOT NULL
             );
         """)
         # Migrations (safe no-op if columns already exist)
@@ -631,6 +647,37 @@ def _backfill_steam_appids() -> None:
             updated += 1
         time.sleep(0.5)  # stay well within Steam's rate limits
     print(f"[Backfill] Steam App IDs: {updated}/{len(rows)} games updated")
+
+
+def _record_removed_wishlist_games(cache_row, current: list, now: str) -> None:
+    """Remember games that dropped off the Steam wishlist since the last fetch."""
+    current_ids = {g["appid"] for g in current}
+    # An empty wishlist after a non-empty one is far more likely a private
+    # profile or a Steam hiccup than everything being bought at once.
+    if not current_ids:
+        return
+    try:
+        previous = json.loads(cache_row["data"]) if cache_row else []
+    except (TypeError, json.JSONDecodeError):
+        previous = []
+
+    gone    = [g for g in previous if g.get("appid") and g["appid"] not in current_ids]
+    unnamed = [g["appid"] for g in gone if not g.get("name") or g["name"].startswith("Steam App ")]
+    details = _get_steam_app_details(unnamed) if unnamed else {}
+
+    with _get_db() as conn:
+        # Games back on the wishlist are no longer "removed"
+        conn.executemany(
+            "DELETE FROM wishlist_removed WHERE appid = ?", [(a,) for a in current_ids]
+        )
+        for g in gone:
+            g = {**g, "library_match": None}
+            if g["appid"] in details:
+                g["name"] = details[g["appid"]]["name"]
+            conn.execute(
+                "INSERT OR IGNORE INTO wishlist_removed (appid, data, removed_at) VALUES (?, ?, ?)",
+                (g["appid"], json.dumps(g), now),
+            )
 
 
 def _cross_reference_wishlist(base_games: list) -> list:
@@ -1060,7 +1107,8 @@ def save_settings():
             )
         if igdb_changed:
             # Flush wishlist cache so next load re-enriches with new credentials
-            conn.execute("DELETE FROM wishlist_cache WHERE id = 1")
+            # Mark stale (not delete): the old list is still needed to spot removed games
+            conn.execute("UPDATE wishlist_cache SET fetched_at = NULL WHERE id = 1")
         conn.commit()
     if igdb_changed:
         # Reset in-memory token so it is re-fetched with new credentials
@@ -1148,6 +1196,7 @@ def get_wishlist():
 
         base_games = games
         fetched_at = _utcnow().isoformat()
+        _record_removed_wishlist_games(cache_row, base_games, fetched_at)
         with _get_db() as conn:
             conn.execute(
                 "INSERT OR REPLACE INTO wishlist_cache (id, data, fetched_at) VALUES (1, ?, ?)",
@@ -1157,13 +1206,30 @@ def get_wishlist():
 
     games = _cross_reference_wishlist(base_games)
     enriched = sum(1 for g in games if g.get("igdb_id"))
+
+    with _get_db() as conn:
+        removed_rows = conn.execute(
+            "SELECT data, removed_at FROM wishlist_removed ORDER BY removed_at DESC"
+        ).fetchall()
+    removed = [{**json.loads(r["data"]), "removed_at": r["removed_at"]} for r in removed_rows]
+    # Once a removed game is in the library it has served its purpose
+    removed = [g for g in _cross_reference_wishlist(removed) if not g["library_match"]]
+
     return jsonify({
         "games":     games,
+        "removed":   removed,
         "fetched_at": fetched_at,
         "cached":    from_cache,
         "igdb_enriched": enriched,
         "igdb_total":    len(games),
     })
+
+
+@app.route("/api/wishlist/removed/<appid>", methods=["DELETE"])
+def dismiss_removed_wishlist_game(appid):
+    with _get_db() as conn:
+        conn.execute("DELETE FROM wishlist_removed WHERE appid = ?", (appid,))
+    return jsonify({"ok": True})
 
 
 @app.route("/api/steam/sync", methods=["POST"])
@@ -1252,6 +1318,131 @@ def igdb_game_by_id():
         "developer":    developer,
         "publisher":    publisher,
     })
+
+
+# ── Backup / restore ──────────────────────────────────────────────────────────
+
+@app.route("/api/backup", methods=["GET"])
+def export_backup():
+    """Zip of the database (games, settings incl. secrets, wishlist) and all cover images."""
+    tmpdir = tempfile.mkdtemp()
+    try:
+        db_copy = os.path.join(tmpdir, "gamelibrary.db")
+        dst = sqlite3.connect(db_copy)
+        try:
+            with _get_db() as src:
+                src.backup(dst)
+            # Credentials set only via environment variables aren't in the DB yet
+            env_settings = {
+                "igdb_client_id":     IGDB_CLIENT_ID,
+                "igdb_client_secret": IGDB_CLIENT_SECRET,
+                "steam_api_key":      STEAM_API_KEY,
+                "steam_wishlist_url": STEAM_WISHLIST_URL,
+            }
+            with dst:
+                for key, value in env_settings.items():
+                    if value:
+                        dst.execute(
+                            "INSERT INTO settings (key, value) VALUES (?, ?)"
+                            " ON CONFLICT(key) DO UPDATE SET value = excluded.value"
+                            " WHERE settings.value = ''",
+                            (key, value),
+                        )
+        finally:
+            dst.close()
+
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.write(db_copy, "gamelibrary.db")
+            for name in sorted(os.listdir(IMAGES_DIR)):
+                path = os.path.join(IMAGES_DIR, name)
+                if os.path.isfile(path):
+                    # Images are already compressed
+                    zf.write(path, f"images/{name}", compress_type=zipfile.ZIP_STORED)
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+    buf.seek(0)
+    stamp = _utcnow().strftime("%Y%m%d-%H%M%S")
+    return send_file(
+        buf,
+        mimetype="application/zip",
+        as_attachment=True,
+        download_name=f"gamelibrarian-backup-{stamp}.zip",
+    )
+
+
+@app.route("/api/backup", methods=["POST"])
+def import_backup():
+    """Replace the database and cover images with the contents of a backup zip."""
+    global _igdb_token, _igdb_token_expires, _igdb_token_creds
+    upload = request.files.get("file")
+    if not upload:
+        return jsonify({"error": "No backup file uploaded"}), 400
+
+    tmpdir = tempfile.mkdtemp()
+    try:
+        zip_path = os.path.join(tmpdir, "upload.zip")
+        upload.save(zip_path)
+        try:
+            zf = zipfile.ZipFile(zip_path)
+        except zipfile.BadZipFile:
+            return jsonify({"error": "Not a GameLibrarian backup (not a zip file)"}), 400
+
+        with zf:
+            if "gamelibrary.db" not in zf.namelist():
+                return jsonify({"error": "Not a GameLibrarian backup (gamelibrary.db missing)"}), 400
+            if sum(i.file_size for i in zf.infolist()) > MAX_BACKUP_UNPACKED:
+                return jsonify({"error": "Backup is too large"}), 400
+
+            new_db = os.path.join(tmpdir, "gamelibrary.db")
+            with zf.open("gamelibrary.db") as fsrc, open(new_db, "wb") as fdst:
+                shutil.copyfileobj(fsrc, fdst)
+
+            new_images = os.path.join(tmpdir, "images")
+            os.mkdir(new_images)
+            image_count = 0
+            for info in zf.infolist():
+                if info.is_dir() or not info.filename.startswith("images/"):
+                    continue
+                name = info.filename[len("images/"):]
+                ext  = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+                if not SAFE_FILENAME.match(name) or ext not in BACKUP_IMAGE_EXTS:
+                    print(f"[Restore] skipping {info.filename!r}")
+                    continue
+                with zf.open(info) as fsrc, open(os.path.join(new_images, name), "wb") as fdst:
+                    shutil.copyfileobj(fsrc, fdst)
+                image_count += 1
+
+        src = sqlite3.connect(new_db)
+        try:
+            try:
+                ok = src.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+                game_count = src.execute("SELECT COUNT(*) FROM games").fetchone()[0]
+                src.execute("SELECT key, value FROM settings LIMIT 1")
+            except sqlite3.DatabaseError:
+                ok = False
+            if not ok:
+                return jsonify({"error": "Backup doesn't contain a valid GameLibrarian database"}), 400
+
+            # Copy into the live database in place — safe with WAL and other open connections
+            with _get_db() as dst:
+                src.backup(dst)
+        finally:
+            src.close()
+
+        for name in os.listdir(IMAGES_DIR):
+            path = os.path.join(IMAGES_DIR, name)
+            if os.path.isfile(path):
+                os.remove(path)
+        for name in os.listdir(new_images):
+            shutil.move(os.path.join(new_images, name), os.path.join(IMAGES_DIR, name))
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+    _init_db()  # bring older backups up to the current schema
+    _igdb_token, _igdb_token_expires, _igdb_token_creds = None, 0.0, ("", "")
+    return jsonify({"ok": True, "games": game_count, "images": image_count})
 
 
 # ── Boot ──────────────────────────────────────────────────────────────────────
