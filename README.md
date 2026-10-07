@@ -196,4 +196,4 @@ python app.py
 
 ## License
 
-MIT — do whatever you like with it.
+MIT — do whatever you like with it. See [LICENSE](LICENSE).
