@@ -20,13 +20,13 @@ const PLATFORMS = {
 };
 
 const STATUSES = {
-  unplayed:        { label: 'Unplayed',           cls: 'unplayed' },
-  unfinished:      { label: 'Unfinished',         cls: 'unfinished' },
-  completed:       { label: 'Completed',          cls: 'completed' },
-  completed_100:   { label: '100%',               cls: 'completed_100' },
-  abandoned:       { label: 'Abandoned',          cls: 'abandoned' },
-  multiplayer_only:{ label: 'Multiplayer',        cls: 'multiplayer_only' },
-  cant_complete:   { label: "Can't Complete",     cls: 'cant_complete' },
+  currently_playing: { label: 'Now Playing',     cls: 'currently_playing' },
+  unplayed:          { label: 'Unplayed',         cls: 'unplayed' },
+  unfinished:        { label: 'Unfinished',       cls: 'unfinished' },
+  completed:         { label: 'Completed',        cls: 'completed' },
+  abandoned:         { label: 'Abandoned',        cls: 'abandoned' },
+  multiplayer_only:  { label: 'Multiplayer',      cls: 'multiplayer_only' },
+  cant_complete:     { label: "Can't Complete",   cls: 'cant_complete' },
 };
 
 // ── State ─────────────────────────────────────────────────────────────────────
@@ -166,6 +166,17 @@ async function init() {
   document.getElementById('coverUrlBtn').addEventListener('click', toggleCoverUrlInput);
   document.getElementById('coverUrlInput').addEventListener('change', e => applyCoverUrl(e.target.value));
 
+  // Steam platform checkbox → show/hide App ID field
+  document.querySelector('input[name="platform"][value="steam"]')
+    .addEventListener('change', e => onSteamToggle(e.target.checked));
+
+  // Settings + wishlist
+  document.getElementById('settingsBtn')       .addEventListener('click', () => switchPage('settings'));
+  document.getElementById('saveSettingsBtn')   .addEventListener('click', saveSettings);
+  document.getElementById('igdbTestBtn')       .addEventListener('click', () => checkIgdbStatus(true));
+  document.getElementById('syncSteamBtn')      .addEventListener('click', syncSteamData);
+  document.getElementById('wishlistRefreshBtn').addEventListener('click', () => loadWishlist(true));
+
   // Star picker
   initStarPicker();
 
@@ -188,10 +199,16 @@ async function init() {
 function switchPage(page) {
   state.page = page;
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.page === page));
-  document.getElementById('libraryPage').classList.toggle('hidden', page !== 'library');
-  document.getElementById('statsPage')  .classList.toggle('hidden', page !== 'stats');
-  document.getElementById('viewToggle') .style.visibility = page === 'library' ? 'visible' : 'hidden';
-  if (page === 'stats') loadStats();
+  document.getElementById('settingsBtn').classList.toggle('active', page === 'settings');
+  document.getElementById('libraryPage') .classList.toggle('hidden', page !== 'library');
+  document.getElementById('statsPage')   .classList.toggle('hidden', page !== 'stats');
+  document.getElementById('wishlistPage').classList.toggle('hidden', page !== 'wishlist');
+  document.getElementById('settingsPage').classList.toggle('hidden', page !== 'settings');
+  document.getElementById('viewToggle').style.visibility = page === 'library' ? 'visible' : 'hidden';
+  document.getElementById('addGameBtn').style.display    = page === 'library' ? '' : 'none';
+  if (page === 'stats')    loadStats();
+  if (page === 'wishlist') loadWishlist();
+  if (page === 'settings') loadSettings();
 }
 
 function switchView(view) {
@@ -237,7 +254,7 @@ function applyFiltersAndRender() {
     games = games.filter(g => state.filterRatings.has(String(g.rating)));
 
   if (state.hideCompleted)
-    games = games.filter(g => !['completed', 'completed_100', 'abandoned'].includes(g.status));
+    games = games.filter(g => !['completed', 'abandoned'].includes(g.status));
 
   state.games = games;
   renderGames();
@@ -280,28 +297,53 @@ function renderGames() {
 
 function renderGrid() {
   const el = document.getElementById('gridView');
-  el.innerHTML = state.games.map(g => `
-    <div class="game-card" data-id="${g.id}" data-status="${g.status}">
-      ${g.cover_local_url
-        ? `<img class="game-card-cover" src="${g.cover_local_url}" alt="${escHtml(g.name)}" loading="lazy" />`
-        : `<div class="game-card-cover-placeholder">
-             <svg viewBox="0 0 48 64" fill="none"><rect x="2" y="2" width="44" height="60" rx="4" stroke="currentColor" stroke-width="2"/><circle cx="24" cy="28" r="8" stroke="currentColor" stroke-width="2"/></svg>
-             No Cover
-           </div>`
-      }
-      <span class="status-badge ${STATUSES[g.status]?.cls || ''}">
-        ${STATUSES[g.status]?.label || escHtml(g.status)}
-      </span>
-      <div class="game-card-info">
-        <div class="game-card-title">${escHtml(g.name)}</div>
-        <div class="game-card-meta">
-          <div class="card-platforms">${renderPlatformPills(g.platforms || [])}</div>
-          <div class="card-stars">${renderStars(g.rating)}</div>
+  const nowPlaying = state.games.filter(g => g.status === 'currently_playing');
+  const rest       = state.games.filter(g => g.status !== 'currently_playing');
+
+  function cardHtml(g) {
+    return `
+      <div class="game-card" data-id="${g.id}" data-status="${g.status}">
+        ${g.cover_local_url
+          ? `<img class="game-card-cover" src="${g.cover_local_url}" alt="${escHtml(g.name)}" loading="lazy" />`
+          : `<div class="game-card-cover-placeholder">
+               <svg viewBox="0 0 48 64" fill="none"><rect x="2" y="2" width="44" height="60" rx="4" stroke="currentColor" stroke-width="2"/><circle cx="24" cy="28" r="8" stroke="currentColor" stroke-width="2"/></svg>
+               No Cover
+             </div>`
+        }
+        <span class="status-badge ${STATUSES[g.status]?.cls || ''}">
+          ${STATUSES[g.status]?.label || g.status}
+        </span>
+        <div class="game-card-info">
+          <div class="game-card-title">${escHtml(g.name)}</div>
+          <div class="game-card-meta">
+            <div class="card-platforms">${renderPlatformPills(g.platforms || [])}</div>
+            <div class="card-stars">${renderStars(g.rating)}</div>
+          </div>
         </div>
       </div>
-    </div>
-  `).join('');
+    `;
+  }
 
+  let html = '';
+
+  if (nowPlaying.length > 0) {
+    html += `
+      <div class="now-playing-section">
+        <div class="now-playing-header">
+          <span class="now-playing-dot"></span>
+          Now Playing
+        </div>
+        <div class="game-grid">${nowPlaying.map(cardHtml).join('')}</div>
+      </div>
+    `;
+    if (rest.length > 0) html += `<div class="library-divider"></div>`;
+  }
+
+  if (rest.length > 0) {
+    html += `<div class="game-grid">${rest.map(cardHtml).join('')}</div>`;
+  }
+
+  el.innerHTML = html;
   el.querySelectorAll('.game-card').forEach(card =>
     card.addEventListener('click', () => openEditModal(Number(card.dataset.id)))
   );
@@ -315,35 +357,59 @@ function renderList() {
     th.classList.toggle('sort-active', th.dataset.sort === state.sortField);
   });
 
-  body.innerHTML = state.games.map(g => `
-    <tr data-id="${g.id}" data-status="${g.status}">
-      <td>
-        ${g.cover_local_url
-          ? `<img class="list-thumb" src="${g.cover_local_url}" alt="${escHtml(g.name)}" loading="lazy" />`
-          : `<div class="list-thumb-placeholder"><svg viewBox="0 0 20 20" fill="currentColor"><path d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm0 2h12v10H4V5z"/></svg></div>`
-        }
-      </td>
-      <td>
-        <div class="list-title">${escHtml(g.name)}</div>
-        ${g.release_date ? `<div class="list-subtitle">${escHtml(g.release_date.slice(0,4))}</div>` : ''}
-      </td>
-      <td><div class="list-platforms">${renderPlatformPills(g.platforms || [])}</div></td>
-      <td><span class="status-text ${STATUSES[g.status]?.cls || ''}">${STATUSES[g.status]?.label || escHtml(g.status)}</span></td>
-      <td><span class="list-stars">${renderStars(g.rating)}</span></td>
-      <td><span class="list-comment" title="${escHtml(g.comment || '')}">${escHtml(g.comment || '')}</span></td>
-      <td>
-        <div class="list-actions">
-          <button class="action-btn edit-btn" data-id="${g.id}" title="Edit">
-            <svg viewBox="0 0 20 20" fill="currentColor"><path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"/></svg>
-            Edit
-          </button>
-          <button class="action-btn danger del-btn" data-id="${g.id}" title="Delete">
-            <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
-          </button>
-        </div>
-      </td>
-    </tr>
-  `).join('');
+  const nowPlaying = state.games.filter(g => g.status === 'currently_playing');
+  const rest       = state.games.filter(g => g.status !== 'currently_playing');
+
+  function rowHtml(g) {
+    return `
+      <tr data-id="${g.id}" data-status="${g.status}">
+        <td>
+          ${g.cover_local_url
+            ? `<img class="list-thumb" src="${g.cover_local_url}" alt="${escHtml(g.name)}" loading="lazy" />`
+            : `<div class="list-thumb-placeholder"><svg viewBox="0 0 20 20" fill="currentColor"><path d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm0 2h12v10H4V5z"/></svg></div>`
+          }
+        </td>
+        <td>
+          <div class="list-title">${escHtml(g.name)}</div>
+          ${g.release_date ? `<div class="list-subtitle">${g.release_date.slice(0,4)}</div>` : ''}
+        </td>
+        <td><div class="list-platforms">${renderPlatformPills(g.platforms || [])}</div></td>
+        <td><span class="status-text ${STATUSES[g.status]?.cls || ''}">${STATUSES[g.status]?.label || g.status}</span></td>
+        <td><span class="list-stars">${renderStars(g.rating)}</span></td>
+        <td><span class="list-comment" title="${escHtml(g.comment || '')}">${escHtml(g.comment || '')}</span></td>
+        <td>
+          <div class="list-actions">
+            <button class="action-btn edit-btn" data-id="${g.id}" title="Edit">
+              <svg viewBox="0 0 20 20" fill="currentColor"><path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"/></svg>
+              Edit
+            </button>
+            <button class="action-btn danger del-btn" data-id="${g.id}" title="Delete">
+              <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
+            </button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }
+
+  let html = '';
+
+  if (nowPlaying.length > 0) {
+    html += `
+      <tr class="now-playing-header-row">
+        <td colspan="7">
+          <span class="now-playing-dot"></span>
+          Now Playing
+        </td>
+      </tr>
+    `;
+    html += nowPlaying.map(rowHtml).join('');
+    if (rest.length > 0) html += `<tr class="library-divider-row"><td colspan="7"></td></tr>`;
+  }
+
+  html += rest.map(rowHtml).join('');
+
+  body.innerHTML = html;
 
   body.querySelectorAll('.edit-btn').forEach(btn =>
     btn.addEventListener('click', e => { e.stopPropagation(); openEditModal(Number(btn.dataset.id)); })
@@ -351,7 +417,7 @@ function renderList() {
   body.querySelectorAll('.del-btn').forEach(btn =>
     btn.addEventListener('click', e => { e.stopPropagation(); confirmDelete(Number(btn.dataset.id)); })
   );
-  body.querySelectorAll('tr').forEach(tr =>
+  body.querySelectorAll('tr[data-id]').forEach(tr =>
     tr.addEventListener('click', () => openEditModal(Number(tr.dataset.id)))
   );
 }
@@ -366,7 +432,7 @@ async function loadStats() {
     renderStats(stats);
   } catch (e) {
     document.getElementById('statsContainer').innerHTML =
-      `<p style="color:var(--s-abandoned);padding:40px">Failed to load stats: ${escHtml(e.message)}</p>`;
+      `<p style="color:var(--s-abandoned);padding:40px">Failed to load stats: ${e.message}</p>`;
   }
 }
 
@@ -377,10 +443,10 @@ function renderStats(s) {
   const total = s.total || 1; // avoid /0
 
   const statusOrder = [
+    ['currently_playing','Now Playing',   'var(--s-currently-playing)'],
     ['unplayed',        'Unplayed',       'var(--s-unplayed)'],
     ['unfinished',      'Unfinished',     'var(--s-unfinished)'],
     ['completed',       'Completed',      'var(--s-completed)'],
-    ['completed_100',   '100% Completed', 'var(--s-completed-100)'],
     ['abandoned',       'Abandoned',      'var(--s-abandoned)'],
     ['multiplayer_only','Multiplayer',    'var(--s-multiplayer)'],
     ['cant_complete',   "Can't Complete", 'var(--s-cant-complete)'],
@@ -407,12 +473,12 @@ function renderStats(s) {
         <span class="stat-label">Total Games</span>
       </div>
       <div class="stat-card completed">
-        <span class="stat-number">${(sc.completed || 0) + (sc.completed_100 || 0)}</span>
+        <span class="stat-number">${sc.completed || 0}</span>
         <span class="stat-label">Completed</span>
       </div>
-      <div class="stat-card hundo">
-        <span class="stat-number">${sc.completed_100 || 0}</span>
-        <span class="stat-label">100% Completed</span>
+      <div class="stat-card currently-playing">
+        <span class="stat-number">${sc.currently_playing || 0}</span>
+        <span class="stat-label">Now Playing</span>
       </div>
       <div class="stat-card abandoned">
         <span class="stat-number">${sc.abandoned || 0}</span>
@@ -425,6 +491,10 @@ function renderStats(s) {
       <div class="stat-card rated">
         <span class="stat-number">${s.rated || 0}</span>
         <span class="stat-label">Rated Games</span>
+      </div>
+      <div class="stat-card hours">
+        <span class="stat-number">${s.total_hours || 0}</span>
+        <span class="stat-label">Hours Played</span>
       </div>
     </div>
 
@@ -488,6 +558,265 @@ function renderStats(s) {
   `;
 }
 
+// ── Settings ──────────────────────────────────────────────────────────────────
+
+async function loadSettings() {
+  try {
+    const s = await GET('/api/settings');
+    document.getElementById('steamUrlInput').value         = s.steam_wishlist_url  || '';
+    document.getElementById('steamApiKeyInput').value      = s.steam_api_key       || '';
+    document.getElementById('igdbClientIdInput').value     = s.igdb_client_id      || '';
+    document.getElementById('igdbClientSecretInput').value = s.igdb_client_secret  || '';
+    if (s.steam_last_sync) {
+      const d  = new Date(s.steam_last_sync + 'Z');
+      const ts = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+               + ' ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+      document.getElementById('steamSyncStatus').textContent = 'Last synced: ' + ts;
+    } else {
+      document.getElementById('steamSyncStatus').textContent = '';
+    }
+  } catch (e) {
+    showToast('Failed to load settings: ' + e.message, 'error');
+  }
+  checkIgdbStatus();
+}
+
+const SYNC_ICON = `<svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14"><path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd"/></svg>`;
+
+async function syncSteamData() {
+  const btn    = document.getElementById('syncSteamBtn');
+  const status = document.getElementById('steamSyncStatus');
+  btn.disabled = true;
+  btn.innerHTML = SYNC_ICON + ' Starting…';
+  status.textContent = '';
+  try {
+    const r = await POST('/api/steam/sync', {});
+    if (r.error) {
+      status.textContent = r.error;
+      showToast('Steam sync: ' + r.error, 'error');
+    } else {
+      status.textContent = 'Syncing in background — this may take a few minutes for large libraries.';
+      showToast('Steam sync started.', 'success');
+    }
+  } catch (e) {
+    status.textContent = 'Sync failed: ' + e.message;
+    showToast('Steam sync failed: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = SYNC_ICON + ' Sync Steam Data';
+  }
+}
+
+async function saveSettings() {
+  const steamUrl   = document.getElementById('steamUrlInput').value.trim();
+  const steamKey   = document.getElementById('steamApiKeyInput').value.trim();
+  const igdbId     = document.getElementById('igdbClientIdInput').value.trim();
+  const igdbSecret = document.getElementById('igdbClientSecretInput').value.trim();
+  const btn = document.getElementById('saveSettingsBtn');
+  btn.disabled    = true;
+  btn.textContent = 'Saving…';
+  try {
+    await PUT('/api/settings', {
+      steam_wishlist_url: steamUrl,
+      steam_api_key:      steamKey,
+      igdb_client_id:     igdbId,
+      igdb_client_secret: igdbSecret,
+    });
+    // Refresh IGDB status (config + live test)
+    try {
+      const cfg = await GET('/api/config');
+      state.igdbConfigured = cfg.igdb_configured;
+    } catch (_) {}
+    showToast('Settings saved.', 'success');
+    checkIgdbStatus();
+  } catch (e) {
+    showToast('Save failed: ' + e.message, 'error');
+  } finally {
+    btn.disabled    = false;
+    btn.textContent = 'Save Settings';
+  }
+}
+
+async function checkIgdbStatus(explicit = false) {
+  const badge  = document.getElementById('igdbStatusBadge');
+  const result = document.getElementById('igdbTestResult');
+  badge.className = 'igdb-status-badge checking';
+  badge.textContent = 'Checking…';
+  if (explicit) result.textContent = '';
+  try {
+    const s = await GET('/api/igdb/status');
+    if (s.connected) {
+      badge.className   = 'igdb-status-badge ok';
+      badge.textContent = '● Connected';
+      if (explicit) result.textContent = 'IGDB is working.';
+    } else {
+      badge.className   = 'igdb-status-badge error';
+      badge.textContent = '● Error';
+      if (explicit) result.textContent = s.message;
+    }
+  } catch (e) {
+    badge.className   = 'igdb-status-badge error';
+    badge.textContent = '● Error';
+    if (explicit) result.textContent = e.message;
+  }
+}
+
+// ── Wishlist ──────────────────────────────────────────────────────────────────
+
+async function loadWishlist(force = false) {
+  document.getElementById('wishlistContainer').innerHTML =
+    '<div class="loading-spinner"><div class="spinner"></div></div>';
+  document.getElementById('wishlistRefreshTs').textContent = '';
+  try {
+    const data = await GET('/api/wishlist' + (force ? '?refresh=1' : ''));
+    renderWishlist(data);
+  } catch (e) {
+    document.getElementById('wishlistContainer').innerHTML =
+      `<div class="wishlist-error">Failed to load wishlist: ${escHtml(e.message)}</div>`;
+  }
+}
+
+function renderWishlist(data) {
+  const container = document.getElementById('wishlistContainer');
+
+  if (data.error === 'no_url') {
+    container.innerHTML = `
+      <div class="wishlist-config-prompt">
+        <svg viewBox="0 0 48 48" fill="none" width="64" height="64"><circle cx="24" cy="24" r="22" stroke="currentColor" stroke-width="2" opacity=".3"/><path d="M24 14v10l6 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity=".5"/></svg>
+        <p>No Steam wishlist URL configured.</p>
+        <button class="btn-primary" onclick="switchPage('settings')">Open Settings</button>
+      </div>`;
+    return;
+  }
+
+  if (data.error) {
+    container.innerHTML = `<div class="wishlist-error">${escHtml(data.error)}</div>`;
+    return;
+  }
+
+  if (data.fetched_at) {
+    const d   = new Date(data.fetched_at + 'Z');
+    const ts  = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+              + ' ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+    document.getElementById('wishlistRefreshTs').textContent =
+      'Last refreshed: ' + ts + (data.cached ? ' (cached)' : '');
+  }
+
+  const games  = data.games || [];
+  const owned  = games.filter(g => g.library_match);
+  const wanted = games.filter(g => !g.library_match);
+
+  if (games.length === 0) {
+    container.innerHTML = `<div class="wishlist-empty">Your Steam wishlist appears to be empty or private.</div>`;
+    return;
+  }
+
+  let html = '';
+
+  if (owned.length > 0) {
+    html += `
+      <div class="wishlist-section-header">
+        <span class="wishlist-section-title">Already Own <span style="opacity:.6">(${owned.length})</span></span>
+        <button class="wishlist-toggle-btn" id="ownedToggleBtn">Hide ▲</button>
+      </div>
+      <div id="ownedGrid" class="wishlist-grid">
+        ${owned.map(g => wishlistCardHtml(g, true, -1)).join('')}
+      </div>`;
+  }
+
+  if (owned.length > 0 && wanted.length > 0) {
+    html += `<div class="library-divider" style="margin: 0 28px"></div>`;
+  }
+
+  if (wanted.length > 0) {
+    if (owned.length > 0) {
+      html += `
+        <div class="wishlist-section-header">
+          <span class="wishlist-section-title">Want to Play <span style="opacity:.6">(${wanted.length})</span></span>
+        </div>`;
+    }
+    html += `<div class="wishlist-grid">${wanted.map((g, i) => wishlistCardHtml(g, false, i)).join('')}</div>`;
+  }
+
+  container.innerHTML = html;
+
+  // Toggle owned section
+  const toggleBtn  = document.getElementById('ownedToggleBtn');
+  const ownedGrid  = document.getElementById('ownedGrid');
+  if (toggleBtn) {
+    toggleBtn.addEventListener('click', () => {
+      const hidden = ownedGrid.classList.toggle('hidden');
+      toggleBtn.textContent = hidden ? 'Show ▼' : 'Hide ▲';
+    });
+  }
+
+  // Owned cards → open library edit modal
+  container.querySelectorAll('.wishlist-card.owned').forEach(card => {
+    card.addEventListener('click', () => openEditModal(Number(card.dataset.libId)));
+  });
+
+  // Add to Library buttons
+  container.querySelectorAll('.btn-add-wishlist').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      addFromWishlist(wanted[Number(btn.dataset.idx)]);
+    });
+  });
+}
+
+function wishlistCardHtml(game, isOwned, idx) {
+  const match = game.library_match;
+
+  const coverHtml = game.capsule
+    ? `<img class="wishlist-card-cover" src="${escHtml(game.capsule)}" alt="${escHtml(game.name)}" loading="lazy"
+           onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" />
+       <div class="wishlist-card-cover-placeholder" style="display:none">No Image</div>`
+    : `<div class="wishlist-card-cover-placeholder">No Image</div>`;
+
+  let footer = '';
+  if (isOwned && match) {
+    footer = `
+      <div class="wishlist-own-info">
+        ${renderPlatformPills(match.platforms || [])}
+        <span class="status-badge ${STATUSES[match.status]?.cls || ''}">
+          ${STATUSES[match.status]?.label || match.status}
+        </span>
+      </div>`;
+  } else {
+    footer = `<button class="btn-add-wishlist" data-idx="${idx}">+ Add to Library</button>`;
+  }
+
+  return `
+    <div class="wishlist-card${isOwned ? ' owned' : ''}"
+         ${isOwned && match ? `data-lib-id="${match.id}"` : ''}>
+      ${coverHtml}
+      <div class="wishlist-card-info">
+        <div class="wishlist-card-title">${escHtml(game.name)}</div>
+        <div class="wishlist-card-meta">
+          ${game.price        ? `<span class="wishlist-price">${escHtml(game.price)}</span>` : '<span></span>'}
+          ${game.release_date ? `<span>${escHtml(game.release_date)}</span>`                 : ''}
+        </div>
+        ${footer}
+      </div>
+    </div>`;
+}
+
+async function addFromWishlist(game) {
+  openAddModal();
+  document.getElementById('formName').value = game.name || '';
+
+  if (game.igdb_id && state.igdbConfigured) {
+    try {
+      const igdbData = await GET(`/api/igdb/game?id=${game.igdb_id}`);
+      fillFromIGDB(igdbData);
+    } catch {
+      if (game.capsule) applyCoverUrl(game.capsule);
+    }
+  } else if (game.capsule) {
+    applyCoverUrl(game.capsule);
+  }
+}
+
 // ── Modal: open / close ───────────────────────────────────────────────────────
 
 function openAddModal() {
@@ -533,8 +862,6 @@ function setupIgdbSection() {
   }
 }
 
-const NO_COVER_HTML = `<svg viewBox="0 0 48 64" fill="none"><rect x="2" y="2" width="44" height="60" rx="4" stroke="currentColor" stroke-width="2" opacity="0.3"/><circle cx="24" cy="28" r="8" stroke="currentColor" stroke-width="2" opacity="0.3"/><path d="M10 46c0-7.732 6.268-14 14-14s14 6.268 14 14" stroke="currentColor" stroke-width="2" opacity="0.3"/></svg><span>No Cover</span>`;
-
 function clearForm() {
   document.getElementById('formName').value         = '';
   document.getElementById('formReleaseDate').value  = '';
@@ -548,9 +875,16 @@ function clearForm() {
   document.getElementById('coverUrlInput').value    = '';
   document.getElementById('coverUrlInput').classList.add('hidden');
 
-  document.getElementById('coverPreview').innerHTML = NO_COVER_HTML;
+  const preview = document.getElementById('coverPreview');
+  preview.innerHTML = `<svg viewBox="0 0 48 64" fill="none"><rect x="2" y="2" width="44" height="60" rx="4" stroke="currentColor" stroke-width="2" opacity="0.3"/><circle cx="24" cy="28" r="8" stroke="currentColor" stroke-width="2" opacity="0.3"/><path d="M10 46c0-7.732 6.268-14 14-14s14 6.268 14 14" stroke="currentColor" stroke-width="2" opacity="0.3"/></svg><span>No Cover</span>`;
 
   document.querySelectorAll('input[name="platform"]').forEach(cb => cb.checked = false);
+  document.getElementById('steamAppIdWrap').style.display = 'none';
+  document.getElementById('formSteamAppId').value         = '';
+  document.getElementById('steamAppIdStatus').textContent = '';
+  document.getElementById('formHoursPlayed').value        = '';
+  hide('steamAchievementsWrap');
+  hide('modalSteamLink');
 
   setRating(0);
   updateCharCount();
@@ -579,6 +913,35 @@ function populateForm(game) {
     if (cb) cb.checked = true;
   });
 
+  const hasSteam = (game.platforms || []).includes('steam');
+  document.getElementById('steamAppIdWrap').style.display = hasSteam ? '' : 'none';
+  document.getElementById('formSteamAppId').value         = game.steam_app_id || '';
+  document.getElementById('steamAppIdStatus').textContent = '';
+  document.getElementById('formHoursPlayed').value        = game.hours_played > 0 ? game.hours_played : '';
+
+  const achTotal    = game.achievements_total    || 0;
+  const achUnlocked = game.achievements_unlocked || 0;
+  if (achTotal > 0) {
+    const pct = Math.round((achUnlocked / achTotal) * 100);
+    document.getElementById('steamAchievementsDisplay').innerHTML = `
+      <div class="achievements-row">
+        <span class="ach-count">${achUnlocked} / ${achTotal}</span>
+        <div class="ach-bar-track"><div class="ach-bar-fill" style="width:${pct}%"></div></div>
+        <span class="ach-pct">${pct}%</span>
+      </div>`;
+    show('steamAchievementsWrap');
+  } else {
+    hide('steamAchievementsWrap');
+  }
+
+  const steamLink = document.getElementById('modalSteamLink');
+  if (game.steam_app_id && hasSteam) {
+    steamLink.href = `https://store.steampowered.com/app/${game.steam_app_id}/`;
+    show('modalSteamLink');
+  } else {
+    hide('modalSteamLink');
+  }
+
   const isAbandoned = game.status === 'abandoned';
   setRating(isAbandoned ? 0 : (game.rating || 0));
   document.getElementById('starPicker').style.opacity      = isAbandoned ? '0.3' : '1';
@@ -598,13 +961,7 @@ function toggleCoverUrlInput() {
 }
 
 function applyCoverUrl(url) {
-  url = url.trim();
-  if (!url) {
-    // Empty URL removes the cover
-    document.getElementById('formCoverUrl').value = '';
-    document.getElementById('coverPreview').innerHTML = NO_COVER_HTML;
-    return;
-  }
+  if (!url) return;
   document.getElementById('formCoverUrl').value = url;
   document.getElementById('coverPreview').innerHTML =
     `<img src="${escHtml(url)}" alt="cover" style="width:100%;height:100%;object-fit:cover"
@@ -651,6 +1008,8 @@ async function saveGame() {
     rating,
     comment:      document.getElementById('formComment').value.slice(0, 400),
     platforms,
+    steam_app_id: document.getElementById('formSteamAppId').value.trim(),
+    hours_played: parseFloat(document.getElementById('formHoursPlayed').value) || 0,
   };
 
   const btn = document.getElementById('saveGameBtn');
@@ -712,12 +1071,12 @@ async function searchIGDB(query) {
     el.innerHTML = results.map((g, i) => `
       <div class="igdb-result-item" data-idx="${i}">
         ${g.cover_url
-          ? `<img class="igdb-result-thumb" src="${escHtml(g.cover_url)}" alt="" loading="lazy" />`
+          ? `<img class="igdb-result-thumb" src="${g.cover_url}" alt="" loading="lazy" />`
           : `<div class="igdb-result-thumb-placeholder">IMG</div>`
         }
         <div>
           <div class="igdb-result-name">${escHtml(g.name)}</div>
-          <div class="igdb-result-year">${escHtml(g.release_date ? g.release_date.slice(0, 4) : '')}${g.platforms_igdb?.length ? ' · ' + escHtml(g.platforms_igdb.slice(0, 3).join(', ')) : ''}</div>
+          <div class="igdb-result-year">${g.release_date ? g.release_date.slice(0, 4) : ''}${g.platforms_igdb?.length ? ' · ' + g.platforms_igdb.slice(0, 3).join(', ') : ''}</div>
         </div>
       </div>
     `).join('');
@@ -726,7 +1085,7 @@ async function searchIGDB(query) {
       item.addEventListener('mousedown', () => fillFromIGDB(results[item.dataset.idx]))
     );
   } catch (e) {
-    el.innerHTML = `<div style="padding:12px 14px;color:var(--s-abandoned);font-size:0.85rem">${escHtml(e.message)}</div>`;
+    el.innerHTML = `<div style="padding:12px 14px;color:var(--s-abandoned);font-size:0.85rem">${e.message}</div>`;
   }
 }
 
@@ -747,7 +1106,42 @@ function fillFromIGDB(g) {
       `<img src="${escHtml(g.cover_url)}" alt="cover" style="width:100%;height:100%;object-fit:cover" />`;
   }
 
+  // If Steam is already checked, auto-fetch App ID by the (now-filled) game name
+  const steamCb = document.querySelector('input[name="platform"][value="steam"]');
+  if (steamCb && steamCb.checked && g.name && !document.getElementById('formSteamAppId').value) {
+    fetchAndFillSteamAppId(g.name);
+  }
+
   showToast(`"${g.name}" data imported from IGDB.`, 'success');
+}
+
+function onSteamToggle(checked) {
+  const wrap = document.getElementById('steamAppIdWrap');
+  wrap.style.display = checked ? '' : 'none';
+  if (checked) {
+    const name    = document.getElementById('formName').value.trim();
+    const current = document.getElementById('formSteamAppId').value.trim();
+    if (name && !current) fetchAndFillSteamAppId(name);
+  }
+}
+
+async function fetchAndFillSteamAppId(name) {
+  if (!name) return;
+  const status = document.getElementById('steamAppIdStatus');
+  status.textContent = 'Looking up…';
+  try {
+    const r = await GET(`/api/steam/find-appid?name=${encodeURIComponent(name)}`);
+    if (r.appid) {
+      document.getElementById('formSteamAppId').value = r.appid;
+      status.textContent = '✓';
+      setTimeout(() => { status.textContent = ''; }, 2000);
+    } else {
+      status.textContent = 'Not found on Steam';
+      setTimeout(() => { status.textContent = ''; }, 3000);
+    }
+  } catch {
+    status.textContent = '';
+  }
 }
 
 // ── Star picker ───────────────────────────────────────────────────────────────
@@ -784,6 +1178,19 @@ function renderStars(rating) {
     html += i <= rating ? '★' : '<span class="empty">★</span>';
   }
   return html;
+}
+
+function steamStoreBtn(g) {
+  if (!g.steam_app_id || !(g.platforms || []).includes('steam')) return '';
+  const url = `https://store.steampowered.com/app/${encodeURIComponent(g.steam_app_id)}/`;
+  return `<a class="steam-store-link" href="${url}" target="_blank" rel="noopener"
+             title="View on Steam Store" onclick="event.stopPropagation()">
+    <svg viewBox="0 0 20 20" fill="currentColor" width="11" height="11">
+      <path d="M11 3a1 1 0 100 2h2.586l-6.293 6.293a1 1 0 101.414 1.414L15 6.414V9a1 1 0 102 0V4a1 1 0 00-1-1h-5z"/>
+      <path d="M5 5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-3a1 1 0 10-2 0v3H5V7h3a1 1 0 000-2H5z"/>
+    </svg>
+    Steam Store
+  </a>`;
 }
 
 function renderPlatformPills(platforms) {

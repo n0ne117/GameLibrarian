@@ -28,10 +28,11 @@
   <nav class="header-nav">
     <button class="nav-btn active" data-page="library">Library</button>
     <button class="nav-btn" data-page="stats">Statistics</button>
+    <button class="nav-btn" data-page="wishlist">Wishlist</button>
   </nav>
 
   <div class="header-actions">
-    <div class="view-toggle" id="viewToggle">
+    <div class="view-toggle" id="viewToggle" style="visibility:visible">
       <button class="view-btn active" data-view="grid" title="Grid view">
         <svg viewBox="0 0 20 20" fill="currentColor"><path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM11 5a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zM11 13a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
       </button>
@@ -42,6 +43,9 @@
     <button class="btn-primary" id="addGameBtn">
       <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16"><path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd"/></svg>
       Add Game
+    </button>
+    <button class="btn-icon" id="settingsBtn" title="Settings">
+      <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16"><path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd"/></svg>
     </button>
   </div>
 </header>
@@ -89,7 +93,7 @@
       <span id="gameCount">Loading…</span>
     </div>
 
-    <div id="gridView"  class="game-grid"></div>
+    <div id="gridView"></div>
     <div id="listView"  class="game-list hidden">
       <table class="list-table">
         <thead>
@@ -128,13 +132,101 @@
     </div>
   </section>
 
+
+  <!-- ─── WISHLIST PAGE ─────────────────────────────────────────────────── -->
+  <section id="wishlistPage" class="page hidden">
+    <div class="wishlist-toolbar">
+      <span id="wishlistRefreshTs" class="wishlist-refresh-ts"></span>
+      <button class="btn-ghost" id="wishlistRefreshBtn">
+        <svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14"><path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd"/></svg>
+        Refresh
+      </button>
+    </div>
+    <div id="wishlistContainer">
+      <div class="loading-spinner"><div class="spinner"></div></div>
+    </div>
+  </section>
+
+  <!-- ─── SETTINGS PAGE ────────────────────────────────────────────────── -->
+  <section id="settingsPage" class="page hidden">
+    <div class="settings-container">
+
+      <div class="settings-card">
+        <h2 class="settings-heading">Steam Integration</h2>
+        <p class="settings-hint">
+          Your wishlist must be set to <strong>Public</strong> in Steam → Edit Profile →
+          Privacy Settings → Game details. Use the numeric profile URL (…/profiles/STEAMID64/…).
+          A free Steam Web API key is required —
+          <a href="https://steamcommunity.com/dev/apikey" target="_blank" rel="noopener">get one here</a>.
+        </p>
+        <div class="form-group" style="max-width:540px">
+          <label class="form-label" for="steamUrlInput">Steam Wishlist URL</label>
+          <input type="url" id="steamUrlInput" class="form-input"
+                 placeholder="https://store.steampowered.com/wishlist/profiles/76561198…" />
+        </div>
+        <div class="form-group" style="max-width:540px">
+          <label class="form-label" for="steamApiKeyInput">Steam Web API Key</label>
+          <input type="password" id="steamApiKeyInput" class="form-input"
+                 placeholder="XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX" autocomplete="off" />
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <button class="btn-ghost" id="syncSteamBtn" type="button">
+            <svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14"><path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd"/></svg>
+            Sync Steam Data
+          </button>
+          <span id="steamSyncStatus" class="settings-hint"></span>
+        </div>
+      </div>
+
+      <div class="settings-card">
+        <div style="display:flex;align-items:center;gap:12px">
+          <h2 class="settings-heading" style="margin:0">IGDB Integration</h2>
+          <span id="igdbStatusBadge" class="igdb-status-badge"></span>
+        </div>
+        <p class="settings-hint">
+          Used for game search and cover art. Create a free application at
+          <a href="https://dev.twitch.tv/console" target="_blank" rel="noopener">dev.twitch.tv</a>
+          to obtain a Client ID and Client Secret.
+        </p>
+        <div class="form-group" style="max-width:540px">
+          <label class="form-label" for="igdbClientIdInput">Client ID</label>
+          <input type="text" id="igdbClientIdInput" class="form-input"
+                 placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" autocomplete="off" />
+        </div>
+        <div class="form-group" style="max-width:540px">
+          <label class="form-label" for="igdbClientSecretInput">Client Secret</label>
+          <input type="password" id="igdbClientSecretInput" class="form-input"
+                 placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" autocomplete="off" />
+        </div>
+        <div>
+          <button class="btn-ghost" id="igdbTestBtn" type="button">Test Connection</button>
+          <span id="igdbTestResult" class="settings-hint" style="margin-left:10px"></span>
+        </div>
+      </div>
+
+      <div class="settings-actions">
+        <button class="btn-primary" id="saveSettingsBtn">Save Settings</button>
+      </div>
+
+    </div>
+  </section>
+
 </main>
 
 <!-- ═══════════════════════════ GAME MODAL ════════════════════════════════ -->
 <div id="gameModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
   <div class="modal">
     <div class="modal-header">
-      <h2 id="modalTitle">Add Game</h2>
+      <div class="modal-title-group">
+        <h2 id="modalTitle">Add Game</h2>
+        <a id="modalSteamLink" class="steam-store-link hidden" href="#" target="_blank" rel="noopener">
+          <svg viewBox="0 0 20 20" fill="currentColor" width="11" height="11">
+            <path d="M11 3a1 1 0 100 2h2.586l-6.293 6.293a1 1 0 101.414 1.414L15 6.414V9a1 1 0 102 0V4a1 1 0 00-1-1h-5z"/>
+            <path d="M5 5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-3a1 1 0 10-2 0v3H5V7h3a1 1 0 000-2H5z"/>
+          </svg>
+          Steam Store
+        </a>
+      </div>
       <button class="modal-close" id="modalCloseBtn" aria-label="Close">&times;</button>
     </div>
 
@@ -217,14 +309,37 @@
               </div>
             </div>
 
+            <!-- Steam App ID (visible only when Steam platform is checked) -->
+            <div class="form-group span-2" id="steamAppIdWrap" style="display:none">
+              <label class="form-label" for="formSteamAppId">
+                Steam App ID
+                <span id="steamAppIdStatus" style="font-size:0.78rem;font-weight:400;color:var(--text-muted);margin-left:8px"></span>
+              </label>
+              <input type="text" id="formSteamAppId" class="form-input" style="max-width:200px"
+                     placeholder="e.g. 730" autocomplete="off" />
+            </div>
+
+            <!-- Hours Played (manual, all platforms) -->
+            <div class="form-group">
+              <label class="form-label" for="formHoursPlayed">Hours Played</label>
+              <input type="number" id="formHoursPlayed" class="form-input" style="max-width:120px"
+                     min="0" step="0.1" placeholder="0" />
+            </div>
+
+            <!-- Achievements (auto-populated from Steam, read-only) -->
+            <div class="form-group hidden" id="steamAchievementsWrap">
+              <label class="form-label">Achievements</label>
+              <div id="steamAchievementsDisplay"></div>
+            </div>
+
             <!-- Status + Rating -->
             <div class="form-group">
               <label class="form-label" for="formStatus">Status</label>
               <select id="formStatus" class="form-input form-select">
+                <option value="currently_playing">Now Playing</option>
                 <option value="unplayed">Unplayed</option>
                 <option value="unfinished">Unfinished</option>
                 <option value="completed">Completed</option>
-                <option value="completed_100">100% Completed</option>
                 <option value="abandoned">Abandoned</option>
                 <option value="multiplayer_only">Multiplayer Only</option>
                 <option value="cant_complete">Can't Be Completed</option>

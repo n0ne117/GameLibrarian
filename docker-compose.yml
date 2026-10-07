@@ -5,13 +5,16 @@ services:
     ports:
       - "5000:5000"
     volumes:
-      - gamelibrarian_data:/data
+      - ./data:/data
     environment:
       - DATA_DIR=/data
       # Optional: IGDB integration (get credentials at https://dev.twitch.tv)
       - IGDB_CLIENT_ID=${IGDB_CLIENT_ID:-}
       - IGDB_CLIENT_SECRET=${IGDB_CLIENT_SECRET:-}
-    restart: unless-stopped
+      # Optional: Steam integration (get key at https://steamcommunity.com/dev/apikey)
+      - STEAM_API_KEY=${STEAM_API_KEY:-}
+      - STEAM_WISHLIST_URL=${STEAM_WISHLIST_URL:-}
+    restart: always
 
 volumes:
   gamelibrarian_data:
