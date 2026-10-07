@@ -1,5 +1,6 @@
 services:
   gamelibrarian:
+    image: ghcr.io/n0ne117/gamelibrarian:latest
     build: .
     container_name: gamelibrarian
     ports:
@@ -15,7 +16,3 @@ services:
       - STEAM_API_KEY=${STEAM_API_KEY:-}
       - STEAM_WISHLIST_URL=${STEAM_WISHLIST_URL:-}
     restart: always
-
-volumes:
-  gamelibrarian_data:
-    driver: local

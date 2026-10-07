@@ -31,16 +31,71 @@ A self-hosted, dockerized web application for organizing your PC and console gam
 
 ## Quick Start
 
-### 1. Clone / download the project
+There are two ways to run GameLibrarian: pull the prebuilt image (no source code needed), or build it yourself from the repository.
 
-```bash
-git clone <repo-url> GameLibrarian
-cd GameLibrarian
+### Option A: Prebuilt image
+
+Images for `linux/amd64` and `linux/arm64` are published to the GitHub Container Registry as `ghcr.io/n0ne117/gamelibrarian`:
+
+| Tag | Contents |
+|-----|----------|
+| `latest` | Latest commit on `main` |
+| `sha-<commit>` | A specific commit |
+| `1.2.3`, `1.2` | Releases (from `v1.2.3` git tags) |
+
+Create a folder with this `docker-compose.yml`:
+
+```yaml
+services:
+  gamelibrarian:
+    image: ghcr.io/n0ne117/gamelibrarian:latest
+    container_name: gamelibrarian
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./data:/data
+    restart: always
 ```
 
-### 2. (Optional) Configure credentials
+Then start it:
 
-Both integrations are optional — without them the app works fully, you just fill in game details by hand. Credentials can be set either in the **Settings** page of the running app or in a `.env` file in the project root (copy `.env.example`):
+```bash
+docker compose up -d
+```
+
+The app will be available at **http://localhost:5000**. Enter your IGDB and Steam credentials on the **Settings** page (see [Credentials](#credentials)).
+
+To update to the newest image:
+
+```bash
+docker compose pull && docker compose up -d
+```
+
+### Option B: Build from source
+
+```bash
+git clone https://github.com/n0ne117/GameLibrarian.git
+cd GameLibrarian
+docker compose up -d --build
+```
+
+The app will be available at **http://localhost:5000**. To update:
+
+```bash
+git pull && docker compose up -d --build
+```
+
+### Stop
+
+```bash
+docker compose down
+```
+
+Data is preserved in the `./data` folder.
+
+### Credentials
+
+Both integrations are optional — without them the app works fully, you just fill in game details by hand. Credentials can be set either in the **Settings** page of the running app or in a `.env` file next to `docker-compose.yml` (copy `.env.example`; with Option A, also add the four variables to the compose file's `environment:` list as in the repository's `docker-compose.yml`):
 
 ```env
 IGDB_CLIENT_ID=your_client_id_here
@@ -58,27 +113,9 @@ Values saved in the Settings page take precedence over the `.env` file.
 
 **Steam** requirements are described under [Steam Integration](#steam-integration).
 
-### 3. Build and run
+### Moving to another machine
 
-```bash
-docker compose up -d --build
-```
-
-The app will be available at **http://localhost:5000**
-
-### 4. Update
-
-```bash
-git pull && docker compose up -d --build
-```
-
-### 5. Stop
-
-```bash
-docker compose down
-```
-
-Data is preserved in the `./data` folder.
+Use **Settings → Backup & Restore**: download a backup on the old instance, start the new one, and restore the backup there. Or copy the whole `data` folder while the container is stopped.
 
 ---
 
