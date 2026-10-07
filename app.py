@@ -423,7 +423,7 @@ def _get_igdb_ids_for_steam_apps(appids: list[str]) -> dict[str, int]:
     uid_list = ", ".join(f'"{a}"' for a in appids[:500])
     raw = _igdb_query(
         "external_games",
-        f'fields uid, game; where category = 1 & uid = ({uid_list}); limit 500;',
+        f'fields uid, game; where external_game_source = 1 & uid = ({uid_list}); limit 500;',
     )
     if not raw:
         return {}
@@ -432,6 +432,40 @@ def _get_igdb_ids_for_steam_apps(appids: list[str]) -> dict[str, int]:
         for item in raw
         if item.get("uid") and item.get("game")
     }
+
+
+def _get_steam_app_details(appids: list[str]) -> dict[str, dict]:
+    """Batch-fetch name and release date from the Steam store (no API key needed)."""
+    result: dict[str, dict] = {}
+    for i in range(0, len(appids), 100):
+        batch = appids[i:i + 100]
+        input_json = {
+            "ids":          [{"appid": int(a)} for a in batch if a.isdigit()],
+            "context":      {"language": "english", "country_code": "US"},
+            "data_request": {"include_basic_info": True, "include_release": True},
+        }
+        try:
+            r = requests.get(
+                "https://api.steampowered.com/IStoreBrowseService/GetItems/v1/",
+                params={"input_json": json.dumps(input_json)},
+                timeout=20,
+            )
+            r.raise_for_status()
+            items = (r.json().get("response") or {}).get("store_items") or []
+        except Exception as exc:
+            print(f"[Steam] GetItems failed: {exc}")
+            continue
+        for item in items:
+            if item.get("success") != 1 or not item.get("name"):
+                continue
+            release = item.get("release") or {}
+            result[str(item["appid"])] = {
+                "name":         item["name"],
+                "release_date": _igdb_date(
+                    release.get("original_release_date") or release.get("steam_release_date")
+                ),
+            }
+    return result
 
 
 def _normalize_name(name: str) -> str:
@@ -1081,6 +1115,16 @@ def get_wishlist():
                 if d["name"]:         game["name"]         = d["name"]
                 if d["cover_url"]:    game["capsule"]      = d["cover_url"]
                 if d["release_date"]: game["release_date"] = d["release_date"]
+
+        # Games IGDB doesn't know: take name/release date from the Steam store
+        missing = [g["appid"] for g in games if not g["name"]]
+        steam_detail = _get_steam_app_details(missing) if missing else {}
+        for game in games:
+            d = steam_detail.get(game["appid"])
+            if d and not game["name"]:
+                game["name"] = d["name"]
+                if not game["release_date"]:
+                    game["release_date"] = d["release_date"]
             if not game["name"]:
                 game["name"] = f"Steam App {game['appid']}"
 
