@@ -290,7 +290,7 @@ function renderGrid() {
            </div>`
       }
       <span class="status-badge ${STATUSES[g.status]?.cls || ''}">
-        ${STATUSES[g.status]?.label || g.status}
+        ${STATUSES[g.status]?.label || escHtml(g.status)}
       </span>
       <div class="game-card-info">
         <div class="game-card-title">${escHtml(g.name)}</div>
@@ -325,10 +325,10 @@ function renderList() {
       </td>
       <td>
         <div class="list-title">${escHtml(g.name)}</div>
-        ${g.release_date ? `<div class="list-subtitle">${g.release_date.slice(0,4)}</div>` : ''}
+        ${g.release_date ? `<div class="list-subtitle">${escHtml(g.release_date.slice(0,4))}</div>` : ''}
       </td>
       <td><div class="list-platforms">${renderPlatformPills(g.platforms || [])}</div></td>
-      <td><span class="status-text ${STATUSES[g.status]?.cls || ''}">${STATUSES[g.status]?.label || g.status}</span></td>
+      <td><span class="status-text ${STATUSES[g.status]?.cls || ''}">${STATUSES[g.status]?.label || escHtml(g.status)}</span></td>
       <td><span class="list-stars">${renderStars(g.rating)}</span></td>
       <td><span class="list-comment" title="${escHtml(g.comment || '')}">${escHtml(g.comment || '')}</span></td>
       <td>
@@ -366,7 +366,7 @@ async function loadStats() {
     renderStats(stats);
   } catch (e) {
     document.getElementById('statsContainer').innerHTML =
-      `<p style="color:var(--s-abandoned);padding:40px">Failed to load stats: ${e.message}</p>`;
+      `<p style="color:var(--s-abandoned);padding:40px">Failed to load stats: ${escHtml(e.message)}</p>`;
   }
 }
 
@@ -533,6 +533,8 @@ function setupIgdbSection() {
   }
 }
 
+const NO_COVER_HTML = `<svg viewBox="0 0 48 64" fill="none"><rect x="2" y="2" width="44" height="60" rx="4" stroke="currentColor" stroke-width="2" opacity="0.3"/><circle cx="24" cy="28" r="8" stroke="currentColor" stroke-width="2" opacity="0.3"/><path d="M10 46c0-7.732 6.268-14 14-14s14 6.268 14 14" stroke="currentColor" stroke-width="2" opacity="0.3"/></svg><span>No Cover</span>`;
+
 function clearForm() {
   document.getElementById('formName').value         = '';
   document.getElementById('formReleaseDate').value  = '';
@@ -546,8 +548,7 @@ function clearForm() {
   document.getElementById('coverUrlInput').value    = '';
   document.getElementById('coverUrlInput').classList.add('hidden');
 
-  const preview = document.getElementById('coverPreview');
-  preview.innerHTML = `<svg viewBox="0 0 48 64" fill="none"><rect x="2" y="2" width="44" height="60" rx="4" stroke="currentColor" stroke-width="2" opacity="0.3"/><circle cx="24" cy="28" r="8" stroke="currentColor" stroke-width="2" opacity="0.3"/><path d="M10 46c0-7.732 6.268-14 14-14s14 6.268 14 14" stroke="currentColor" stroke-width="2" opacity="0.3"/></svg><span>No Cover</span>`;
+  document.getElementById('coverPreview').innerHTML = NO_COVER_HTML;
 
   document.querySelectorAll('input[name="platform"]').forEach(cb => cb.checked = false);
 
@@ -597,7 +598,13 @@ function toggleCoverUrlInput() {
 }
 
 function applyCoverUrl(url) {
-  if (!url) return;
+  url = url.trim();
+  if (!url) {
+    // Empty URL removes the cover
+    document.getElementById('formCoverUrl').value = '';
+    document.getElementById('coverPreview').innerHTML = NO_COVER_HTML;
+    return;
+  }
   document.getElementById('formCoverUrl').value = url;
   document.getElementById('coverPreview').innerHTML =
     `<img src="${escHtml(url)}" alt="cover" style="width:100%;height:100%;object-fit:cover"
@@ -705,12 +712,12 @@ async function searchIGDB(query) {
     el.innerHTML = results.map((g, i) => `
       <div class="igdb-result-item" data-idx="${i}">
         ${g.cover_url
-          ? `<img class="igdb-result-thumb" src="${g.cover_url}" alt="" loading="lazy" />`
+          ? `<img class="igdb-result-thumb" src="${escHtml(g.cover_url)}" alt="" loading="lazy" />`
           : `<div class="igdb-result-thumb-placeholder">IMG</div>`
         }
         <div>
           <div class="igdb-result-name">${escHtml(g.name)}</div>
-          <div class="igdb-result-year">${g.release_date ? g.release_date.slice(0, 4) : ''}${g.platforms_igdb?.length ? ' · ' + g.platforms_igdb.slice(0, 3).join(', ') : ''}</div>
+          <div class="igdb-result-year">${escHtml(g.release_date ? g.release_date.slice(0, 4) : '')}${g.platforms_igdb?.length ? ' · ' + escHtml(g.platforms_igdb.slice(0, 3).join(', ')) : ''}</div>
         </div>
       </div>
     `).join('');
@@ -719,7 +726,7 @@ async function searchIGDB(query) {
       item.addEventListener('mousedown', () => fillFromIGDB(results[item.dataset.idx]))
     );
   } catch (e) {
-    el.innerHTML = `<div style="padding:12px 14px;color:var(--s-abandoned);font-size:0.85rem">${e.message}</div>`;
+    el.innerHTML = `<div style="padding:12px 14px;color:var(--s-abandoned);font-size:0.85rem">${escHtml(e.message)}</div>`;
   }
 }
 
