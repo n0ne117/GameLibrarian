@@ -113,6 +113,7 @@ The **Wishlist** tab shows your Steam wishlist in your wishlist priority order:
 - Names, cover art, and release dates come from IGDB (Steam App ID → IGDB game). Without IGDB credentials, games show the Steam header image and `Steam App <id>` as the name
 - **Already Own** — wishlist games that are already in your library, matched by IGDB ID or by name. Click one to open it in the library
 - **Want to Play** — everything else. **+ Add to Library** opens the Add Game dialog pre-filled from IGDB
+- **Search** filters the wishlist by name as you type (ignores case and accents, so `ragnarok` finds *Ragnarök*)
 - The wishlist is cached for 24 hours. **Refresh** fetches it from Steam again immediately
 
 The wishlist needs a Steam Web API key and a public profile — see [Steam Integration](#steam-integration).
