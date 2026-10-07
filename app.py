@@ -13,7 +13,8 @@ import sqlite3
 import threading
 import time
 import unicodedata
-from datetime import datetime
+from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
@@ -156,11 +157,40 @@ def _igdb_query(endpoint: str, body: str):
 
 # ── Database ──────────────────────────────────────────────────────────────────
 
-def _get_db() -> sqlite3.Connection:
+@contextmanager
+def _get_db():
+    """Yield a connection that commits (or rolls back) and is always closed."""
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
-    return conn
+    try:
+        with conn:
+            yield conn
+    finally:
+        conn.close()
+
+
+def _utcnow() -> datetime:
+    """Naive UTC now — matches the format already stored in the DB."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _igdb_date(ts) -> str:
+    """IGDB unix timestamp → YYYY-MM-DD ('' if missing or invalid)."""
+    try:
+        return datetime.fromtimestamp(ts, timezone.utc).strftime("%Y-%m-%d") if ts else ""
+    except (TypeError, ValueError, OverflowError, OSError):
+        return ""
+
+
+def _parse_number(value, cast, default):
+    """cast(value), or default when empty; raises ValueError on garbage."""
+    if value is None or value == "":
+        return default
+    try:
+        return cast(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"invalid number: {value!r}")
 
 
 def _init_db() -> None:
@@ -377,14 +407,7 @@ def _get_igdb_game_details(igdb_ids: list[int]) -> dict[int, dict]:
                 f"https://images.igdb.com/igdb/image/upload"
                 f"/t_cover_big/{g['cover']['image_id']}.jpg"
             )
-        release_date = ""
-        if g.get("first_release_date"):
-            try:
-                release_date = datetime.utcfromtimestamp(
-                    g["first_release_date"]
-                ).strftime("%Y-%m-%d")
-            except Exception:
-                pass
+        release_date = _igdb_date(g.get("first_release_date"))
         result[g["id"]] = {
             "name":         g.get("name", ""),
             "cover_url":    cover_url,
@@ -519,7 +542,7 @@ def _sync_steam_data() -> dict:
     with _get_db() as conn:
         conn.execute(
             "INSERT OR REPLACE INTO settings (key, value) VALUES ('steam_last_sync', ?)",
-            (datetime.utcnow().isoformat(),),
+            (_utcnow().isoformat(),),
         )
         conn.commit()
 
@@ -539,7 +562,7 @@ def _startup_background() -> None:
                 "SELECT value FROM settings WHERE key='steam_last_sync'"
             ).fetchone()
         if ts_row:
-            age = (datetime.utcnow() - datetime.fromisoformat(ts_row["value"])).total_seconds()
+            age = (_utcnow() - datetime.fromisoformat(ts_row["value"])).total_seconds()
             if age < 3600:
                 return
     except Exception:
@@ -640,7 +663,7 @@ def api_config():
 
 @app.route("/api/igdb/search")
 def igdb_search():
-    q = request.args.get("q", "").strip()
+    q = re.sub(r'["\\]', "", request.args.get("q", "")).strip()
     if not q:
         return jsonify([])
     if not all(_get_igdb_credentials()):
@@ -662,14 +685,7 @@ def igdb_search():
                 f"/t_cover_big/{g['cover']['image_id']}.jpg"
             )
 
-        release_date = ""
-        if g.get("first_release_date"):
-            try:
-                release_date = datetime.utcfromtimestamp(
-                    g["first_release_date"]
-                ).strftime("%Y-%m-%d")
-            except Exception:
-                pass
+        release_date = _igdb_date(g.get("first_release_date"))
 
         developer = publisher = ""
         for ic in g.get("involved_companies") or []:
@@ -750,11 +766,28 @@ def add_game():
     if status not in VALID_STATUSES:
         return jsonify({"error": "invalid status"}), 400
 
+    try:
+        rating       = max(0, min(5, _parse_number(data.get("rating"), int, 0)))
+        hours_played = max(0.0, _parse_number(data.get("hours_played"), float, 0.0))
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    if status == "abandoned":
+        rating = 0
+
+    with _get_db() as conn:
+        dup = conn.execute(
+            "SELECT 1 FROM games WHERE lower(name) = lower(?)", (name,)
+        ).fetchone()
+    if dup:
+        return jsonify({"error": f'"{name}" is already in your Inventory.'}), 409
+
     cover_image_path, cover_url = _save_cover(data, "new")
-    rating      = 0 if status == "abandoned" else max(0, min(5, int(data.get("rating") or 0)))
-    comment     = (data.get("comment") or "")[:400]
+    cover_error = None
+    if cover_url and not cover_image_path:
+        cover_error = "Cover image could not be downloaded"
+        cover_url   = ""
+    comment      = (data.get("comment") or "")[:400]
     steam_app_id = (data.get("steam_app_id") or "").strip()
-    hours_played = max(0.0, float(data.get("hours_played") or 0))
 
     with _get_db() as conn:
         cur = conn.execute(
@@ -786,7 +819,10 @@ def add_game():
         )
         conn.commit()
         row = conn.execute("SELECT * FROM games WHERE id=?", (cur.lastrowid,)).fetchone()
-    return jsonify(_row_to_dict(row)), 201
+    result = _row_to_dict(row)
+    if cover_error:
+        result["cover_error"] = cover_error
+    return jsonify(result), 201
 
 
 @app.route("/api/games/<int:gid>", methods=["GET"])
@@ -811,6 +847,7 @@ def update_game(gid):
     if status not in VALID_STATUSES:
         return jsonify({"error": "invalid status"}), 400
 
+    cover_error      = None
     old_cover_url    = existing.get("cover_url") or ""
     new_cover_url    = (data.get("cover_url", old_cover_url) or "").strip()
     cover_image_path = existing.get("cover_image_path")
@@ -823,14 +860,21 @@ def update_game(gid):
         if dl:
             _remove_image(cover_image_path)
             cover_image_path = dl
+        else:
+            # Keep the old cover so saving again retries the download
+            cover_error   = "Cover image could not be downloaded"
+            new_cover_url = old_cover_url
 
-    rating       = (
-        0 if status == "abandoned"
-        else max(0, min(5, int(data.get("rating", existing["rating"]) or 0)))
-    )
-    comment      = (data.get("comment") or "")[:400]
+    try:
+        rating       = max(0, min(5, _parse_number(data.get("rating", existing["rating"]), int, 0)))
+        hours_played = max(0.0, _parse_number(
+            data.get("hours_played", existing.get("hours_played")), float, 0.0))
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    if status == "abandoned":
+        rating = 0
+    comment      = (data.get("comment", existing.get("comment")) or "")[:400]
     steam_app_id = (data.get("steam_app_id", existing.get("steam_app_id") or "")).strip()
-    hours_played = max(0.0, float(data.get("hours_played", existing.get("hours_played") or 0) or 0))
 
     with _get_db() as conn:
         conn.execute(
@@ -864,7 +908,10 @@ def update_game(gid):
         )
         conn.commit()
         row = conn.execute("SELECT * FROM games WHERE id=?", (gid,)).fetchone()
-    return jsonify(_row_to_dict(row))
+    result = _row_to_dict(row)
+    if cover_error:
+        result["cover_error"] = cover_error
+    return jsonify(result)
 
 
 @app.route("/api/games/<int:gid>", methods=["DELETE"])
@@ -994,7 +1041,7 @@ def get_wishlist():
     if not force and cache_row and cache_row["fetched_at"]:
         try:
             age = (
-                datetime.utcnow() - datetime.fromisoformat(cache_row["fetched_at"])
+                _utcnow() - datetime.fromisoformat(cache_row["fetched_at"])
             ).total_seconds()
             if age < WISHLIST_TTL:
                 cached = json.loads(cache_row["data"])
@@ -1037,7 +1084,7 @@ def get_wishlist():
                 game["name"] = f"Steam App {game['appid']}"
 
         base_games = games
-        fetched_at = datetime.utcnow().isoformat()
+        fetched_at = _utcnow().isoformat()
         with _get_db() as conn:
             conn.execute(
                 "INSERT OR REPLACE INTO wishlist_cache (id, data, fetched_at) VALUES (1, ?, ?)",
@@ -1106,8 +1153,8 @@ def igdb_status():
 @app.route("/api/igdb/game")
 def igdb_game_by_id():
     igdb_id = request.args.get("id", "").strip()
-    if not igdb_id:
-        return jsonify({"error": "id required"}), 400
+    if not igdb_id.isdigit():
+        return jsonify({"error": "numeric id required"}), 400
     if not all(_get_igdb_credentials()):
         return jsonify({"error": "IGDB not configured"}), 503
     raw = _igdb_query(
@@ -1125,14 +1172,7 @@ def igdb_game_by_id():
             f"https://images.igdb.com/igdb/image/upload"
             f"/t_cover_big/{g['cover']['image_id']}.jpg"
         )
-    release_date = ""
-    if g.get("first_release_date"):
-        try:
-            release_date = datetime.utcfromtimestamp(
-                g["first_release_date"]
-            ).strftime("%Y-%m-%d")
-        except Exception:
-            pass
+    release_date = _igdb_date(g.get("first_release_date"))
     developer = publisher = ""
     for ic in g.get("involved_companies") or []:
         co = (ic.get("company") or {}).get("name", "")

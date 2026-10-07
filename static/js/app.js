@@ -1033,13 +1033,15 @@ async function saveGame() {
   btn.textContent = 'Saving…';
 
   try {
+    let saved;
     if (state.editingGameId) {
-      await PUT(`/api/games/${state.editingGameId}`, payload);
+      saved = await PUT(`/api/games/${state.editingGameId}`, payload);
       showToast(`"${name}" updated.`, 'success');
     } else {
-      await POST('/api/games', payload);
+      saved = await POST('/api/games', payload);
       showToast(`"${name}" added to your library!`, 'success');
     }
+    if (saved.cover_error) showToast(saved.cover_error + ' — try another URL.', 'warn');
     closeModal();
     await loadGames();
   } catch (e) {
