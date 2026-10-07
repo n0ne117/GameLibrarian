@@ -33,8 +33,9 @@ STEAM_WISHLIST_URL = os.environ.get("STEAM_WISHLIST_URL", "")
 
 WISHLIST_TTL = 86400  # 24 hours
 
+# Must match STATUSES in static/js/app.js
 VALID_STATUSES = {
-    "unplayed", "unfinished", "completed", "completed_100",
+    "currently_playing", "unplayed", "unfinished", "completed",
     "abandoned", "multiplayer_only", "cant_complete",
 }
 
