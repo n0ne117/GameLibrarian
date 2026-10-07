@@ -636,26 +636,44 @@ def _backfill_steam_appids() -> None:
 def _cross_reference_wishlist(base_games: list) -> list:
     with _get_db() as conn:
         lib_rows = conn.execute(
-            "SELECT id, igdb_id, name, platforms, status FROM games"
+            "SELECT id, igdb_id, steam_app_id, name, platforms, status FROM games"
         ).fetchall()
 
-    igdb_to_lib: dict = {}
-    name_to_lib: dict = {}
+    appid_to_lib: dict = {}
+    igdb_to_lib:  dict = {}
+    name_to_lib:  dict = {}
     for row in lib_rows:
         g = dict(row)
+        if g["steam_app_id"]:
+            appid_to_lib[str(g["steam_app_id"])] = g
         if g["igdb_id"]:
-            igdb_to_lib[g["igdb_id"]] = g
+            igdb_to_lib[str(g["igdb_id"])] = g
         norm = re.sub(r"[^a-z0-9]", "", g["name"].lower())
-        name_to_lib[norm] = g
+        name_to_lib.setdefault(norm, []).append(g)
+
+    def _same_game_by_name(lib: dict, game: dict) -> bool:
+        # A shared name is not enough when the IDs say these are different
+        # games (e.g. Fable 2004 vs. the Fable reboot on Steam).
+        if lib["igdb_id"] and game.get("igdb_id") and str(lib["igdb_id"]) != str(game["igdb_id"]):
+            return False
+        if lib["steam_app_id"] and str(lib["steam_app_id"]) != str(game["appid"]):
+            return False
+        return True
 
     games = []
     for base in base_games:
         game = dict(base)
         game["library_match"] = None
-        match = igdb_to_lib.get(game.get("igdb_id")) if game.get("igdb_id") else None
+        match = (
+            appid_to_lib.get(str(game["appid"]))
+            or (igdb_to_lib.get(str(game["igdb_id"])) if game.get("igdb_id") else None)
+        )
         if not match:
-            norm = re.sub(r"[^a-z0-9]", "", game["name"].lower())
-            match = name_to_lib.get(norm)
+            norm  = re.sub(r"[^a-z0-9]", "", game["name"].lower())
+            match = next(
+                (lib for lib in name_to_lib.get(norm, []) if _same_game_by_name(lib, game)),
+                None,
+            )
         if match:
             try:
                 platforms = (
