@@ -29,6 +29,9 @@ const STATUSES = {
   cant_complete:     { label: "Can't Complete",   cls: 'cant_complete' },
 };
 
+// Statuses that count as "done" — combined in the stats and hidden by "Hide completed"
+const FINISHED_STATUSES = ['completed', 'multiplayer_only', 'cant_complete'];
+
 // ── State ─────────────────────────────────────────────────────────────────────
 
 const state = {
@@ -277,7 +280,7 @@ function applyFiltersAndRender() {
     games = games.filter(g => state.filterRatings.has(String(g.rating)));
 
   if (state.hideCompleted)
-    games = games.filter(g => !['completed', 'abandoned'].includes(g.status));
+    games = games.filter(g => g.status !== 'abandoned' && !FINISHED_STATUSES.includes(g.status));
 
   state.games = games;
   renderGames();
@@ -464,15 +467,15 @@ function renderStats(s) {
   const rc = s.rating_counts || {};
   const pc = s.platform_counts || {};
   const total = s.total || 1; // avoid /0
+  const finished = FINISHED_STATUSES.reduce((n, k) => n + (sc[k] || 0), 0);
 
-  const statusOrder = [
-    ['currently_playing','Now Playing',   'var(--s-currently-playing)'],
-    ['unplayed',        'Unplayed',       'var(--s-unplayed)'],
-    ['unfinished',      'Unfinished',     'var(--s-unfinished)'],
-    ['completed',       'Completed',      'var(--s-completed)'],
-    ['abandoned',       'Abandoned',      'var(--s-abandoned)'],
-    ['multiplayer_only','Multiplayer',    'var(--s-multiplayer)'],
-    ['cant_complete',   "Can't Complete", 'var(--s-cant-complete)'],
+  // [count, label, color]; Completed, Multiplayer and Can't Complete share one bar
+  const statusBars = [
+    [sc.currently_playing || 0, 'Now Playing',                     'var(--s-currently-playing)'],
+    [sc.unplayed || 0,          'Unplayed',                        'var(--s-unplayed)'],
+    [sc.unfinished || 0,        'Unfinished',                      'var(--s-unfinished)'],
+    [finished,                  "Completed, Multiplayer, Can't",   'var(--s-completed)'],
+    [sc.abandoned || 0,         'Abandoned',                       'var(--s-abandoned)'],
   ];
 
   const platformOrder = Object.keys(PLATFORMS);
@@ -496,7 +499,7 @@ function renderStats(s) {
         <span class="stat-label">Total Games</span>
       </div>
       <div class="stat-card completed">
-        <span class="stat-number">${sc.completed || 0}</span>
+        <span class="stat-number">${finished}</span>
         <span class="stat-label">Completed</span>
       </div>
       <div class="stat-card currently-playing">
@@ -515,18 +518,13 @@ function renderStats(s) {
         <span class="stat-number">${s.rated || 0}</span>
         <span class="stat-label">Rated Games</span>
       </div>
-      <div class="stat-card hours">
-        <span class="stat-number">${s.total_hours || 0}</span>
-        <span class="stat-label">Hours Played</span>
-      </div>
     </div>
 
     <div class="stats-charts">
       <div class="stats-panel">
         <h3 class="stats-section-title">Completion Status</h3>
         <div class="bar-chart">
-          ${statusOrder.map(([key, label, color]) => {
-            const n = sc[key] || 0;
+          ${statusBars.map(([n, label, color]) => {
             return n === 0 ? '' : `
               <div class="bar-row">
                 <div class="bar-label-row">

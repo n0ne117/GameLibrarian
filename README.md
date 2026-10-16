@@ -10,7 +10,7 @@ A self-hosted, dockerized web application for organizing your PC and console gam
 
 - **Game Library** — Add, edit, and delete games from your personal inventory
 - **IGDB Integration** — Search the [IGDB](https://www.igdb.com/) database to auto-fill game metadata (name, cover art, release date, summary, genres, developer, publisher)
-- **Completion Tracking** — Mark games as: Now Playing, Unplayed, Unfinished, Completed, Abandoned, Multiplayer Only, or Can't Be Completed. Games you're currently playing are pinned to the top of the library
+- **Completion Tracking** — Mark games as: Now Playing, Unplayed, Unfinished, Completed, Abandoned, Multiplayer Only, or Can't Be Completed. Games you're currently playing are pinned to the top of the library. **Hide completed** hides Completed, Multiplayer Only, Can't Be Completed and Abandoned games
 - **5-Star Rating** — Rate your games (abandoned games are automatically set to 0 stars)
 - **Platform Support** — Steam, Epic Games, EA Origin, GoG, Blizzard, Microsoft, Nintendo, Sega, Xbox, PlayStation — multiple platforms per game
 - **Steam Integration** — Play time and achievement progress synced from your Steam account, with a Steam Store link on every Steam game (see [Steam Integration](#steam-integration))
@@ -21,7 +21,7 @@ A self-hosted, dockerized web application for organizing your PC and console gam
 - **Grid & List Views** — Toggle between a visual card grid and a compact list table
 - **Filtering** — Filter by platform, status, and rating
 - **Sorting** — Sort by name, rating, status, release date, or date added (ascending/descending)
-- **Statistics Dashboard** — Overview of your collection: totals, total hours played, completion breakdown, rating distribution, platform breakdown
+- **Statistics Dashboard** — Overview of your collection: totals, completion breakdown, rating distribution, platform breakdown. Completed, Multiplayer Only and Can't Be Completed count together as completed
 - **Settings Page** — Enter Steam and IGDB credentials in the browser instead of editing config files
 - **Backup & Restore** — Download everything as one .zip and restore it later (see [Backup & Restore](#backup--restore))
 - **Persistent Storage** — All data (SQLite database + images) lives in `./data` and survives restarts/rebuilds

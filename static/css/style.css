@@ -762,7 +762,6 @@ main { padding: 0; }
 .stat-card.abandoned::before        { background: var(--s-abandoned); }
 .stat-card.unplayed::before         { background: var(--s-unplayed); }
 .stat-card.rated::before            { background: #f59e0b; }
-.stat-card.hours::before            { background: var(--p-steam); }
 
 .stat-number {
   font-size: 2.4rem;

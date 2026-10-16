@@ -1041,9 +1041,6 @@ def get_stats():
         rated       = conn.execute(
             "SELECT COUNT(*) FROM games WHERE rating > 0"
         ).fetchone()[0]
-        total_hours = conn.execute(
-            "SELECT COALESCE(SUM(hours_played), 0) FROM games"
-        ).fetchone()[0]
         platform_games = conn.execute("SELECT platforms FROM games").fetchall()
 
     status_counts  = {r[0]: r[1] for r in status_rows}
@@ -1062,7 +1059,6 @@ def get_stats():
         {
             "total":           total,
             "rated":           rated,
-            "total_hours":     round(total_hours, 1),
             "status_counts":   status_counts,
             "rating_counts":   rating_counts,
             "platform_counts": platform_counts,
