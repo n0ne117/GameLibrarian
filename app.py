@@ -839,8 +839,8 @@ def list_games():
         params.append(status)
     if rating:
         try:
-            sql += " AND rating = ?"
             params.append(int(rating))
+            sql += " AND rating = ? AND status != 'abandoned'"  # abandoned = 0 stars, not unrated
         except ValueError:
             pass
 

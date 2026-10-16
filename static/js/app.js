@@ -287,8 +287,9 @@ function applyFiltersAndRender() {
   if (state.filterStatuses.size > 0)
     games = games.filter(g => state.filterStatuses.has(g.status));
 
+  // Abandoned games are "0 stars" (rating 0 in the DB), not unrated — they match no rating filter
   if (state.filterRatings.size > 0)
-    games = games.filter(g => state.filterRatings.has(String(g.rating)));
+    games = games.filter(g => g.status !== 'abandoned' && state.filterRatings.has(String(g.rating)));
 
   if (state.hideCompleted)
     games = games.filter(g => g.status !== 'abandoned' && !FINISHED_STATUSES.includes(g.status));
@@ -505,9 +506,6 @@ function renderStats(s) {
   // Attributes that make an element open the library filtered by `filter`
   const link = filter =>
     `data-filter="${escHtml(JSON.stringify(filter))}" role="button" tabindex="0" title="Show in library"`;
-  const allStatuses   = Object.keys(STATUSES);
-  // The rating chart leaves out abandoned games (always unrated), so its links do too
-  const notAbandoned  = allStatuses.filter(k => k !== 'abandoned');
 
   document.getElementById('statsContainer').innerHTML = `
     <h2 class="stats-section-title" style="margin-top:0">Overview</h2>
@@ -563,9 +561,7 @@ function renderStats(s) {
             const count = rc[String(n)] || 0;
             const w = Math.round((count / maxRating) * 100);
             return `
-              <div class="rating-row stat-link" ${link(n === 0
-                ? { ratings: ['0'], statuses: notAbandoned }
-                : { ratings: [String(n)] })}>
+              <div class="rating-row stat-link" ${link({ ratings: [String(n)] })}>
                 <span class="rating-stars">${starsLabel(n)}</span>
                 <div class="rating-bar-wrap">
                   <div class="bar-track"><div class="bar-fill" style="width:${w}%;background:#f59e0b"></div></div>
