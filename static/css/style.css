@@ -803,6 +803,13 @@ main { padding: 0; }
 .bar-chart { display: flex; flex-direction: column; gap: 12px; }
 
 .bar-row { display: flex; flex-direction: column; gap: 5px; }
+
+/* Statistics elements that open the filtered library */
+.stat-link { cursor: pointer; transition: border-color var(--transition), background var(--transition); }
+.stat-card.stat-link:hover { border-color: var(--accent); }
+.bar-row.stat-link, .rating-row.stat-link { border-radius: var(--radius-sm); margin: -4px -6px; padding: 4px 6px; }
+.bar-row.stat-link:hover, .rating-row.stat-link:hover { background: var(--accent-subtle); }
+.stat-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .bar-label-row {
   display: flex;
   justify-content: space-between;

@@ -181,6 +181,17 @@ async function init() {
   document.getElementById('igdbTestBtn')       .addEventListener('click', () => checkIgdbStatus(true));
   document.getElementById('syncSteamBtn')      .addEventListener('click', syncSteamData);
   document.getElementById('wishlistRefreshBtn').addEventListener('click', () => loadWishlist(true));
+
+  // Statistics: cards and bars jump to the library with matching filters
+  const statsContainer = document.getElementById('statsContainer');
+  const openStatLink = e => {
+    const el = e.target.closest('[data-filter]');
+    if (el) showLibraryFiltered(JSON.parse(el.dataset.filter));
+  };
+  statsContainer.addEventListener('click', openStatLink);
+  statsContainer.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openStatLink(e); }
+  });
   document.getElementById('downloadBackupBtn') .addEventListener('click', () => { window.location.href = '/api/backup'; });
   document.getElementById('restoreBackupBtn')  .addEventListener('click', () => document.getElementById('restoreBackupInput').click());
   document.getElementById('restoreBackupInput').addEventListener('change', e => {
@@ -469,13 +480,13 @@ function renderStats(s) {
   const total = s.total || 1; // avoid /0
   const finished = FINISHED_STATUSES.reduce((n, k) => n + (sc[k] || 0), 0);
 
-  // [count, label, color]; Completed, Multiplayer and Can't Complete share one bar
+  // [count, label, color, statuses]; Completed, Multiplayer and Can't Complete share one bar
   const statusBars = [
-    [sc.currently_playing || 0, 'Now Playing',                     'var(--s-currently-playing)'],
-    [sc.unplayed || 0,          'Unplayed',                        'var(--s-unplayed)'],
-    [sc.unfinished || 0,        'Unfinished',                      'var(--s-unfinished)'],
-    [finished,                  "Completed, Multiplayer, Can't",   'var(--s-completed)'],
-    [sc.abandoned || 0,         'Abandoned',                       'var(--s-abandoned)'],
+    [sc.currently_playing || 0, 'Now Playing',                   'var(--s-currently-playing)', ['currently_playing']],
+    [sc.unplayed || 0,          'Unplayed',                      'var(--s-unplayed)',          ['unplayed']],
+    [sc.unfinished || 0,        'Unfinished',                    'var(--s-unfinished)',        ['unfinished']],
+    [finished,                  "Completed, Multiplayer, Can't", 'var(--s-completed)',         FINISHED_STATUSES],
+    [sc.abandoned || 0,         'Abandoned',                     'var(--s-abandoned)',         ['abandoned']],
   ];
 
   const platformOrder = Object.keys(PLATFORMS);
@@ -491,30 +502,37 @@ function renderStats(s) {
   }
   const maxRating = Math.max(1, ...Object.values(rc).map(Number));
 
+  // Attributes that make an element open the library filtered by `filter`
+  const link = filter =>
+    `data-filter="${escHtml(JSON.stringify(filter))}" role="button" tabindex="0" title="Show in library"`;
+  const allStatuses   = Object.keys(STATUSES);
+  // The rating chart leaves out abandoned games (always unrated), so its links do too
+  const notAbandoned  = allStatuses.filter(k => k !== 'abandoned');
+
   document.getElementById('statsContainer').innerHTML = `
     <h2 class="stats-section-title" style="margin-top:0">Overview</h2>
     <div class="stats-hero">
-      <div class="stat-card total">
+      <div class="stat-card total stat-link" ${link({})}>
         <span class="stat-number">${s.total}</span>
         <span class="stat-label">Total Games</span>
       </div>
-      <div class="stat-card completed">
+      <div class="stat-card completed stat-link" ${link({ statuses: FINISHED_STATUSES })}>
         <span class="stat-number">${finished}</span>
         <span class="stat-label">Completed</span>
       </div>
-      <div class="stat-card currently-playing">
+      <div class="stat-card currently-playing stat-link" ${link({ statuses: ['currently_playing'] })}>
         <span class="stat-number">${sc.currently_playing || 0}</span>
         <span class="stat-label">Now Playing</span>
       </div>
-      <div class="stat-card abandoned">
+      <div class="stat-card abandoned stat-link" ${link({ statuses: ['abandoned'] })}>
         <span class="stat-number">${sc.abandoned || 0}</span>
         <span class="stat-label">Abandoned</span>
       </div>
-      <div class="stat-card unplayed">
+      <div class="stat-card unplayed stat-link" ${link({ statuses: ['unplayed'] })}>
         <span class="stat-number">${sc.unplayed || 0}</span>
         <span class="stat-label">Unplayed</span>
       </div>
-      <div class="stat-card rated">
+      <div class="stat-card rated stat-link" ${link({ ratings: ['1', '2', '3', '4', '5'] })}>
         <span class="stat-number">${s.rated || 0}</span>
         <span class="stat-label">Rated Games</span>
       </div>
@@ -524,9 +542,9 @@ function renderStats(s) {
       <div class="stats-panel">
         <h3 class="stats-section-title">Completion Status</h3>
         <div class="bar-chart">
-          ${statusBars.map(([n, label, color]) => {
+          ${statusBars.map(([n, label, color, statuses]) => {
             return n === 0 ? '' : `
-              <div class="bar-row">
+              <div class="bar-row stat-link" ${link({ statuses })}>
                 <div class="bar-label-row">
                   <span class="bar-label-name">${label}</span>
                   <span class="bar-label-val">${n} &nbsp; <span style="color:var(--text-disabled)">${pct(n)}%</span></span>
@@ -545,7 +563,9 @@ function renderStats(s) {
             const count = rc[String(n)] || 0;
             const w = Math.round((count / maxRating) * 100);
             return `
-              <div class="rating-row">
+              <div class="rating-row stat-link" ${link(n === 0
+                ? { ratings: ['0'], statuses: notAbandoned }
+                : { ratings: [String(n)] })}>
                 <span class="rating-stars">${starsLabel(n)}</span>
                 <div class="rating-bar-wrap">
                   <div class="bar-track"><div class="bar-fill" style="width:${w}%;background:#f59e0b"></div></div>
@@ -565,7 +585,7 @@ function renderStats(s) {
           const info = PLATFORMS[key];
           const colorMap = { steam:'var(--p-steam)', epic:'var(--p-epic)', ea_origin:'var(--p-ea)', nintendo:'var(--p-nintendo)', sega:'var(--p-sega)', xbox:'var(--p-xbox)', playstation:'var(--p-playstation)', gog:'var(--p-gog)', blizzard:'var(--p-blizzard)', microsoft:'var(--p-microsoft)' };
           return n === 0 ? '' : `
-            <div class="bar-row">
+            <div class="bar-row stat-link" ${link({ platforms: [key] })}>
               <div class="bar-label-row">
                 <span class="bar-label-name"><span class="plat-pill ${info.cls}" style="font-size:.6rem">${info.label}</span></span>
                 <span class="bar-label-val">${n}</span>
@@ -1439,6 +1459,25 @@ function updateClearFiltersBtn() {
     state.filterRatings.size   > 0 ||
     state.hideCompleted;
   document.getElementById('clearFiltersBtn').classList.toggle('hidden', !active);
+}
+
+// Open the library with exactly these filters (used by the statistics page)
+function showLibraryFiltered({ statuses = [], ratings = [], platforms = [] } = {}) {
+  for (const [set, values] of [
+    [state.filterStatuses, statuses], [state.filterRatings, ratings], [state.filterPlatforms, platforms],
+  ]) {
+    set.clear();
+    values.forEach(v => set.add(v));
+  }
+  state.hideCompleted = false;
+  document.getElementById('hideCompleted').checked = false;
+  document.getElementById('searchInput').value = '';
+  document.getElementById('searchClearBtn').classList.add('hidden');
+  buildFilterDropdowns();
+  updateClearFiltersBtn();
+  switchPage('library');
+  window.scrollTo(0, 0);
+  loadGames();   // reload: the search box (server-side) was cleared
 }
 
 function clearAllFilters() {
